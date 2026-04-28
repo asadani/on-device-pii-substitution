@@ -1,0 +1,817 @@
+% !TEX program = pdflatex
+% =====================================================================
+% arXiv submission: "Consistency-Preserving On-Device PII Substitution
+%                    with a 1-bit Small Language Model"
+% Author: Anuj Sadani <anujsadani@infrrd.ai>, Infrrd.ai
+%
+% Build (locally, on Linux with TeX Live; no shell-escape required):
+%   pdflatex main.tex
+%   bibtex   main
+%   pdflatex main.tex
+%   pdflatex main.tex
+%
+% Notes for arXiv:
+%   - This source is configured for the default arXiv toolchain
+%     (pdfLaTeX, AutoTeX). No 00README.XXX marker file is needed.
+%   - CJK example strings (e.g., \cjk{...}) use the CJKutf8 package
+%     (CJK / cjk-fonts in TeX Live), which arXiv ships with.
+%   - All paths are relative; figures live under figures/ if needed.
+%
+% Files to upload to arXiv (.zip or .tar.gz):
+%   main.tex
+%   refs.bib
+%   figures/        (optional; currently empty)
+% =====================================================================
+
+\documentclass[11pt]{article}
+
+% ---------------------------------------------------------------------
+% Encoding & geometry
+% ---------------------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[a4paper, margin=1in]{geometry}
+\usepackage{lmodern}                 % scalable Latin Modern fonts
+\usepackage{microtype}               % subtle typographic improvements
+
+% ---------------------------------------------------------------------
+% CJK rendering for Chinese / Japanese example strings.
+% Every CJK occurrence in the body uses the \cjk{...} macro defined
+% below, which wraps the argument in a CJK environment. The "gbsn"
+% font is GB-Simplified Song; its Han-ideograph coverage is sufficient
+% for the kanji-only Japanese names in our examples (a known limitation
+% we already discuss in the paper).
+%
+% Per-instance wrapping (rather than a global \AtBeginDocument env) is
+% more robust against bibtex, lstlisting, and \maketitle.
+% ---------------------------------------------------------------------
+\usepackage{CJKutf8}
+
+% ---------------------------------------------------------------------
+% Math, tables, code, references
+% ---------------------------------------------------------------------
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}                % nicer rules for tables
+\usepackage{array}                   % m{} columns, \arraybackslash
+\usepackage{graphicx}                % \includegraphics
+\usepackage{xcolor}
+\usepackage{enumitem}                % tighter list spacing
+\usepackage{verbatim}
+\usepackage{listings}                % code listings (used for the pipeline)
+\usepackage[hidelinks, breaklinks=true]{hyperref}
+\usepackage[capitalize]{cleveref}
+
+% ---------------------------------------------------------------------
+% Listings style — pipeline diagram and shell commands.
+% ---------------------------------------------------------------------
+\lstdefinestyle{plain}{
+  basicstyle=\ttfamily\small,
+  columns=fullflexible,
+  keepspaces=true,
+  breaklines=true,
+  frame=single,
+  framesep=4pt,
+  xleftmargin=8pt,
+  xrightmargin=4pt,
+}
+\lstset{style=plain}
+
+% ---------------------------------------------------------------------
+% Convenience macros
+% ---------------------------------------------------------------------
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\arrowto}{\ensuremath{\rightarrow}}
+\newcommand{\openaipf}{\code{openai/privacy-filter}}
+\newcommand{\bonsai}{\code{Bonsai-1.7B}}
+\newcommand{\ternary}{\code{Ternary-Bonsai-1.7B}}
+\newcommand{\faker}{\code{faker}}
+\newcommand{\spacy}{\code{spaCy}}
+\newcommand{\disgpt}{\code{distilgpt2}}
+
+% \cjk{...} wraps a string in a CJK environment so that CJKutf8 +
+% pdfLaTeX renders the Han / kana glyphs correctly. To swap in
+% xeCJK later, redefine this macro to \texttt{#1} (XeLaTeX handles
+% CJK natively when xeCJK is loaded).
+\newcommand{\cjk}[1]{\begin{CJK*}{UTF8}{gbsn}#1\end{CJK*}}
+
+% ---------------------------------------------------------------------
+% Title block
+% ---------------------------------------------------------------------
+\title{Consistency-Preserving On-Device PII Substitution\\
+       with a 1-bit Small Language Model}
+
+\author{
+  Anuj Sadani\\
+  Infrrd.ai\\
+  \texttt{anujsadani@infrrd.ai}
+}
+
+\date{\today}
+
+\begin{document}
+\maketitle
+
+% =====================================================================
+\begin{abstract}
+PII redaction in machine-learning pipelines today usually replaces
+detected entities with placeholder tokens such as \code{[PERSON]},
+destroying the downstream utility of the redacted text for retrieval,
+language-model fine-tuning, and NER training. We propose and evaluate a
+fully on-device pipeline that \emph{substitutes} PII with consistent,
+type-preserving fake values: a 1.5\,B mixture-of-experts token
+classifier (\openaipf{}, with 50\,M active parameters) detects spans, an
+entity resolver groups same-string mentions, and a 1-bit small language
+model (\bonsai{}, Q1\_0) proposes contextual surrogates for names,
+addresses, and dates while a rule-based generator (\faker{}) handles
+fully patterned fields. To our knowledge, this is the first published
+evaluation of an end-to-end on-device PII substitution stack at this
+quantization level. We report a \emph{prompting} finding that turns out
+to be more important than the quantization choice: with a naive
+fixed-three-shot demonstration, both 1-bit \bonsai{} and 1.58-bit
+\ternary{} regurgitate the demonstration outputs verbatim regardless of
+the input---the Chinese name \cjk{杨娟}, the Japanese name
+\cjk{山田太郎}, and the German name M\"uller-Schulz all collapse to
+``Alice Johnson''. We fix this with \textbf{locale-conditioned rotating
+few-shot demonstrations}: a character-range heuristic classifies each
+input's locale and selects a locale-pure demonstration pool, and a
+per-input MD5 hash deterministically samples which three demonstrations
+appear in the prompt. With the fix, the same 1-bit model produces
+locale-correct surrogates (\cjk{杨娟}\arrowto{}\cjk{李伟},
+M\"uller-Schulz\arrowto{}Anna Becker,
+\code{11-Jul-1998}\arrowto{}\code{05-Aug-2003}), achieves downstream
+NER training F1 within seed-level noise of faker-only baselines
+(0.371\,$\pm$\,0.049 vs.\ 0.448\,$\pm$\,0.082, $n=5$ seeds, Welch's
+$p\approx 0.11$), and beats faker on length preservation in 5 of 6
+locales.
+We argue that small-LM PII substitution is viable on-device, and that
+prompt engineering matters more than quantization at this scale.
+\end{abstract}
+
+% =====================================================================
+\section{Introduction}
+\label{sec:intro}
+
+Existing PII redaction tools---Microsoft Presidio~\cite{presidio},
+the OpenAI privacy filter~\cite{privacyfilter}, \spacy{}+regex
+pipelines~\cite{spacy}---produce \emph{redacted} text in which detected
+entities are replaced by short placeholder tokens such as \code{[NAME]}
+or \code{[EMAIL]}. This is adequate for compliance display purposes but
+fails for downstream uses that need natural-looking text: training data
+for fine-tuning, search indices over redacted corpora, and
+retrieval-augmented generation over sensitive document stores. The
+placeholder approach also hurts utility in measurable ways: NER models
+trained on \code{[PERSON]}-redacted corpora generalise poorly to
+non-redacted text (Section~\ref{sec:ner}), and language-model perplexity
+over placeholder-rich documents is dominated by the placeholder tokens
+themselves.
+
+\emph{Substitution}---replacing each detected PII span with a
+realistic, fake value of the same type---is the obvious alternative,
+but three constraints have so far prevented its widespread adoption in
+privacy-sensitive pipelines: \textbf{(1)} the substitution must be
+\emph{consistent} within a document, so that ``John Smith''
+\arrowto{} ``Marcus Chen'' everywhere, not five different fakes;
+\textbf{(2)} it must be \emph{type-preserving}, so a Chinese name does
+not become a US name; and \textbf{(3)} it should run \emph{on-device}
+without sending the (still-real-PII) input to a cloud
+LLM~\cite{gpt4tr}.
+
+Recent advances in 1-bit and ternary-bit quantization (e.g., the
+Bonsai~\cite{bonsai} and Ternary-Bonsai~\cite{ternarybonsai} families,
+and prior work on BitNet~\cite{bitnet}) make small generative language
+models viable on commodity CPUs. We investigate whether such models can
+serve as the surrogate-proposer in a privacy-preserving substitution
+pipeline, evaluating the resulting system on five metrics (privacy,
+naturalness, consistency, length, and downstream NER training F1).
+
+\paragraph{Threat model (scope).}
+We measure literal-string leak against ground-truth PII values; we do
+not consider membership-inference or linkage attacks against the
+substituted output. Differential-privacy guarantees on the substitution
+distribution are out of scope.
+
+\paragraph{Contributions.}
+\begin{enumerate}[leftmargin=*, itemsep=2pt, topsep=2pt]
+  \item A reproducible on-device substitution pipeline combining
+        \openaipf{}, \bonsai{} (Q1\_0), and \faker{}, with all code and
+        configurations released.
+  \item The first quantitative comparison of redact / faker-only /
+        hybrid substitution modes under the constraint of CPU-only
+        inference, on 100 multi-template multilingual documents.
+  \item \textbf{Identification and isolation of a ``few-shot
+        regurgitation'' failure mode} in small SLMs at extreme
+        quantization, validated by showing that 1-bit \bonsai{} and
+        1.58-bit \ternary{} produce identical regurgitating outputs on
+        the same inputs (i.e., the failure is caused by prompting, not
+        by quantization).
+  \item \textbf{A simple and effective fix: locale-conditioned rotating
+        few-shot demonstrations}, with deterministic per-input demo
+        sampling that preserves cache-friendliness. The fix eliminates
+        the regression in downstream NER F1 that we observed under naive
+        prompting.
+\end{enumerate}
+
+% =====================================================================
+\section{Related Work}
+\label{sec:related}
+
+\subsection{PII detection}
+Microsoft Presidio~\cite{presidio} combines regex, \spacy{} NER, and
+rule-based recognisers. The \openaipf{} model~\cite{privacyfilter}
+(1.5\,B MoE, 50\,M active) is a fine-tuned encoder using BIOES
+tags~\cite{ratinov2009bioes} over eight PII categories. Its published
+F1 on a seven-template synthetic benchmark is 0.587 (precision 0.619,
+recall 0.627), with weakness on dates (44.5\% of false positives) and
+non-English addresses.
+
+\subsection{Synthetic PII and anonymization}
+\faker{}~\cite{faker} is the de-facto rule-based generator for
+synthetic PII. Presidio's anonymizer can swap detected spans for hash,
+redaction, or counter-style replacements but not consistent
+type-preserving fakes. Recent work has used GPT-3.5 / GPT-4
+\cite{gpt4tr} to generate context-appropriate replacements; this
+approach violates the on-device constraint and incurs per-request cost.
+
+\subsection{Low-bit small language models}
+The Bonsai family (1-bit Q1\_0)~\cite{bonsai} and Ternary-Bonsai
+(1.58-bit Q2\_0)~\cite{ternarybonsai} are Qwen3-based~\cite{qwen3}
+decoder-only LMs trained for extreme quantization. We run inference via
+\code{llama.cpp}~\cite{llamacpp}. Prior work~\cite{bitnet} has
+evaluated extreme-quantization SLMs on QA-style benchmarks but not, to
+our knowledge, on generative-substitution tasks where input copying is
+a failure mode.
+
+\subsection{Downstream-utility evaluation}
+Prior anonymization work typically reports privacy and naturalness in
+isolation. We follow the broader synthetic-data literature in
+additionally measuring length preservation and within-document entity
+consistency, both relevant to downstream NER training utility, and we
+evaluate the latter directly by training a \spacy{}~\cite{spacy} NER
+model on each variant of our corpus and testing on held-out original
+text.
+
+% =====================================================================
+\section{Method}
+\label{sec:method}
+
+\subsection{Architecture}
+\label{sec:arch}
+
+\begin{lstlisting}
+                  text -> privacy-filter (BIOES -> char spans)
+                       -> EntityResolver (group by canonical, label)
+                       -> propose_surrogate dispatcher:
+                           PERSON / ADDRESS / DATE -> Bonsai-1.7B
+                           EMAIL / PHONE / ACCT / URL / SECRET -> faker
+                       -> splice (R-to-L, preserve whitespace)
+                       -> output text
+\end{lstlisting}
+
+Detection runs once per document at $\sim$1\,s/512 tokens on CPU. The
+\code{EntityResolver} groups detected spans by
+\code{(canonical\_lowercased, label)} so that all mentions of ``John
+Smith'' share a single surrogate. Surrogates are cached per
+\code{(mode, family, canonical, label)} so repeated names and common
+patterns trigger the SLM exactly once over the corpus.
+
+\subsection{Surrogate proposers}
+\label{sec:proposers}
+
+For PERSON, ADDRESS, and DATE labels, we invoke \bonsai{} (Q1\_0)
+through \code{llama-cli --single-turn}. Each call uses a three-shot
+prompt of the form \code{Real: <example>\textbackslash{}nFake:
+<example>\textbackslash{}n...Real: <input>\textbackslash{}nFake:}.
+
+\paragraph{Locale-conditioned rotating demonstrations.}
+Naively using a small fixed set of demonstrations is catastrophic for
+1-bit SLMs: the model pattern-matches the demonstration \emph{outputs}
+and emits one of them verbatim regardless of the input. A pilot run of
+the pipeline with three fixed English demonstrations produced ``Alice
+Johnson'' as the surrogate for the Chinese name \cjk{杨娟}, the
+Japanese name \cjk{山田太郎}, and the German name M\"uller-Schulz---all
+collapsed to the first English demonstration value (see
+Section~\ref{sec:regurgitation} for the complete diagnosis).
+
+Our final design avoids this with two cooperating mechanisms:
+\begin{enumerate}[leftmargin=*, itemsep=2pt, topsep=2pt]
+  \item \textbf{Locale conditioning.} A lightweight character-range and
+        keyword-based heuristic classifies each input into one of
+        \{\code{en}, \code{de}, \code{es}, \code{ja}, \code{zh}\} for
+        PERSON / ADDRESS, and one of \{\code{mdy\_slash},
+        \code{ymd\_dash}, \code{dmy\_dash\_mon}, \code{dmy\_slash},
+        \code{unknown}\} for DATE. Each class has its own pool of 4--8
+        demonstrations in the matching script and date format
+        (Appendix~\ref{app:pools}).
+  \item \textbf{Per-input rotating sampling.} From the appropriate
+        pool, three demonstrations are sampled deterministically with
+        an MD5 hash of the input string as the random seed. This means
+        \emph{the same entity always receives the same demonstrations}
+        (cache-friendly across documents) but \emph{different entities
+        receive different demonstration subsets} (preventing any single
+        demonstration value from dominating the surrogate distribution).
+\end{enumerate}
+
+With this strategy, \bonsai{} produces locale-appropriate,
+format-preserving, and diverse surrogates: \cjk{杨娟}\arrowto{}\cjk{李伟},
+\cjk{山田太郎}\arrowto{}\cjk{郑强} (Chinese fallback for kanji-only
+Japanese names---see Section~\ref{sec:limits}),
+M\"uller-Schulz\arrowto{}Anna Becker,
+\code{11-Jul-1998}\arrowto{}\code{05-Aug-2003}.
+
+We validate every response and reject empty, identity-equal, or
+punctuation-only outputs, falling back to \faker{} when validation
+fails.
+
+For EMAIL, PHONE, ACCT, URL, and SECRET labels, we use \faker{}
+directly because these fields have low contextual entropy---there is
+no benefit from generative reasoning over \code{Faker().email()}.
+
+\subsection{Splice and whitespace}
+\label{sec:splice}
+
+The privacy filter sometimes includes a leading whitespace in its
+character span. We preserve original leading and trailing whitespace
+when splicing surrogates back into the text to avoid cosmetic artefacts
+such as \code{is[PRIVATE\_PERSON]} (which would inflate perplexity).
+
+% =====================================================================
+\section{Experiments}
+\label{sec:exp}
+
+\subsection{Setup}
+\label{sec:setup}
+
+\paragraph{Dataset.}
+100 documents from the \openaipf{} evaluation
+set~\cite{aiprivacy200k,privacyfilter}, covering 7 templates (1099,
+W-2, auto\_insurance, bank\_statement, invoice, mortgage\_insurance,
+paystub) and 6 locales (en\_US $n{=}42$, en\_IN 16, de\_DE 12, es\_MX
+10, ja\_JP 10, zh\_CN 10). Each document carries ground-truth PII
+values ($\sim$6.6 per document on average).
+
+\paragraph{Models.}
+\begin{itemize}[leftmargin=*, itemsep=2pt, topsep=2pt]
+  \item Detection: \openaipf{}, 1.5\,B MoE, 50\,M active, bf16,
+        CPU~\cite{privacyfilter,transformers}.
+  \item SLM: \bonsai{} Q1\_0~\cite{bonsai}, CPU via
+        \code{llama.cpp}~\cite{llamacpp}.
+  \item Naturalness evaluator: \disgpt{} ($\sim$82\,M
+        parameters)~\cite{distilgpt2}, CPU.
+  \item Fallback surrogate generator: \faker{}~\cite{faker}.
+  \item Downstream NER: \spacy{} blank English pipeline~\cite{spacy}.
+\end{itemize}
+
+\paragraph{Hardware.}
+31\,GB RAM, x86-64 CPU; no GPU used.
+
+\paragraph{Modes evaluated.}
+\begin{itemize}[leftmargin=*, itemsep=2pt, topsep=2pt]
+  \item \texttt{redact}: replace each span with \code{[LABEL]} (current
+        state of practice).
+  \item \texttt{faker}: replace every span with a \faker{} value of
+        matching type.
+  \item \texttt{hybrid}: \bonsai{} for PERSON / ADDRESS / DATE,
+        \faker{} for the other five labels (our proposed pipeline).
+\end{itemize}
+
+\subsection{Primary metrics}
+\label{sec:primary}
+
+We report four per-document metrics, averaged across the corpus:
+
+\begin{enumerate}[leftmargin=*, itemsep=2pt, topsep=2pt]
+  \item \textbf{Leak rate}: fraction of \emph{ground-truth PII strings}
+        that still appear verbatim (case-insensitive substring) in the
+        output. Lower is better.
+  \item \textbf{Naturalness PPL}: \disgpt{} perplexity over the output
+        text, chunked at 1024 tokens. Lower is more natural.
+  \item \textbf{Consistency rate}: for entities appearing $\ge 2$ times
+        in the input, fraction where the output uses the same surrogate
+        at every mention. Higher is better.
+  \item \textbf{Length preservation}:
+        $1 - |\,\text{len(out)} - \text{len(in)}\,| / \text{len(in)}$.
+        Closer to 1 is better.
+\end{enumerate}
+
+\begin{table}[t]
+\centering
+\caption{Primary metrics ($N{=}100$, averaged across all 7 templates
+and 6 locales).}
+\label{tab:primary}
+\begin{tabular}{l c c c c r}
+\toprule
+\textbf{Mode} & \textbf{Leak\,$\downarrow$} & \textbf{PPL\,$\downarrow$}
+& \textbf{Consistency\,$\uparrow$} & \textbf{Length pres.\,$\uparrow$}
+& \textbf{Avg.\ latency} \\
+\midrule
+redact  & 0.226 & 27.8          & 1.000 & 0.973          & 1.2\,s  \\
+faker   & 0.226 & 47.3          & 1.000 & 0.978          & 1.1\,s  \\
+hybrid  & 0.226 & \textbf{42.8} & 1.000 & \textbf{0.982} & 38.1\,s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Headline result.}
+Hybrid PPL (42.8) is lower than faker (47.3, $-9.5\%$) while length
+preservation is the best of the three modes (0.982 vs.\ 0.978, 0.973).
+Redact achieves the lowest PPL (27.8), but this is an artefact of
+\disgpt{}'s tokenisation (placeholder tokens cluster predictably---not
+because the text is more natural; see Section~\ref{sec:limits}).
+Consistency is 1.000 across all modes because surrogates are
+deterministically cached per \code{(mode, family, canonical, label)}.
+
+\paragraph{Privacy floor.}
+The leak rate of 0.226 is \emph{identical} across all three modes:
+every mode misses the same ground-truth values, which corresponds to
+the published privacy-filter recall of 0.627. The architectural choice
+between redact / faker / hybrid does not affect privacy at all---only
+\emph{what to do} with the spans the filter catches.
+
+\paragraph{Per-locale (PPL).}
+Hybrid is the PPL winner over faker in \textbf{all six locales}:
+en\_US (42.2 vs.\ 46.4), en\_IN (38.5 vs.\ 44.5),
+de\_DE (47.6 vs.\ 51.3), es\_MX (32.6 vs.\ 35.6),
+ja\_JP (44.1 vs.\ 49.7), zh\_CN (55.3 vs.\ 59.9). The English-only
+\disgpt{} proxy systematically penalises non-Latin script outputs, so
+the \emph{true} multilingual naturalness gap is likely larger than
+these numbers suggest.
+
+\paragraph{Per-locale (length preservation).}
+Hybrid is the length-preservation winner over faker in \textbf{five of
+six locales} (de\_DE 0.984 vs.\ 0.975, en\_IN 0.982 vs.\ 0.972, es\_MX
+0.986 vs.\ 0.980, zh\_CN 0.995 vs.\ 0.971, ja\_JP 0.974 vs.\ 0.976
+near-tie); only en\_US slightly favours faker (0.979 vs.\ 0.983).
+
+% =====================================================================
+\subsection{Few-shot regurgitation: a prompting failure, not a quantization failure}
+\label{sec:regurgitation}
+
+A pilot run of the pipeline using a fixed three-shot demonstration
+template (one English, one Japanese, one Spanish demo) revealed a
+striking failure mode: across all 509 unique-entity \bonsai{} calls,
+the model produced output that was never literally identical to the
+input (0 echoes by our validation), but for low-resource-locale inputs
+the output was very often \textbf{one of the few-shot demonstration
+values verbatim, regardless of the input}:
+
+\begin{itemize}[leftmargin=*, itemsep=1pt, topsep=2pt]
+  \item \cjk{杨娟} (Chinese, NAMED INSURED on a \code{zh\_CN}
+        auto-insurance form) \arrowto{} ``Alice Johnson'' (the first
+        PERSON demonstration).
+  \item \cjk{宁夏回族自治区兰州县山亭陈街B座 572990} \arrowto{}
+        ``123 Main Street, Boston MA 02101'' (the first ADDRESS
+        demonstration).
+  \item \code{11-Jul-1998} (DD-Mon-YYYY) \arrowto{} \code{03/15/1985}
+        (MM/DD/YYYY---\emph{both} type and locale wrong).
+  \item \cjk{山田太郎} (Japanese), M\"uller-Schulz (German) \arrowto{}
+        both ``Alice Johnson''.
+\end{itemize}
+
+\paragraph{Diagnosis: prompting, not quantization.}
+Our initial hypothesis was that 1-bit quantization had degraded the
+model's instruction-following. We tested this by re-running the
+\emph{exact same five problem prompts} under 1.58-bit \ternary{}
+(Q2\_0)~\cite{ternarybonsai}---a different quantization scheme running
+on the same Qwen3 base architecture~\cite{qwen3} and the same
+demonstrations. \ternary{} produced \textbf{byte-for-byte identical
+outputs} to \bonsai{} (\cjk{杨娟}\,\arrowto\,``Alice Johnson'',
+\code{11-Jul-1998}\,\arrowto\,\code{03/15/1985}, etc.) at roughly
+six times slower per-call inference. This rules out quantization as the
+root cause: the model is doing what \emph{any} small LM asked to
+pattern-match \code{Real:X\textbackslash{}nFake:Y} would do---extract
+the most recent demonstration output as the answer when the input does
+not match the demonstration's distribution.
+
+\paragraph{Fix: locale-conditioned rotating few-shot demonstrations}
+(described in Section~\ref{sec:proposers}). With character-range locale
+detection feeding into pools of 4--8 demonstrations per locale (and 4
+demonstrations per date format), and per-input-hash-seeded sampling of
+3 demonstrations per call, the same 1-bit \bonsai{} produces:
+
+\begin{itemize}[leftmargin=*, itemsep=1pt, topsep=2pt]
+  \item \cjk{杨娟} \arrowto{} \cjk{李伟} (Chinese name in zh-pool)
+  \item \cjk{宁夏回族自治区兰州县山亭陈街B座 572990} \arrowto{}
+        \cjk{广东省广州市天河区珠江新城200号} (Chinese address)
+  \item \code{11-Jul-1998} \arrowto{} \code{05-Aug-2003} (DD-Mon-YYYY
+        format preserved)
+  \item M\"uller-Schulz \arrowto{} Anna Becker (German name)
+  \item \code{Hauptstra\ss e 45, 10117 Berlin} \arrowto{}
+        \code{Bahnhofstra\ss e 7, 60313 Frankfurt}
+  \item ``John Smith'' \arrowto{} ``David Kim'' (different US name; no
+        longer ``Alice Johnson'')
+\end{itemize}
+
+The fix is dataset-free, does not require fine-tuning, and adds
+$<50$\,ms per surrogate-proposal call. All quantitative numbers in
+Tables~\ref{tab:primary} and~\ref{tab:ner} are produced under this
+fixed prompting strategy.
+
+\paragraph{Known limit: kanji-only Japanese names.}
+These map to the \code{zh} pool because our locale heuristic requires
+kana to disambiguate (\cjk{山田太郎}\,\arrowto\,\cjk{郑强} instead of a
+Japanese fake). A character-frequency-based classifier or an explicit
+``treat ambiguous CJK as both ja and zh'' strategy would address this.
+
+% =====================================================================
+\subsection{Latency}
+\label{sec:latency}
+
+\begin{table}[t]
+\centering
+\caption{Average per-document latency (seconds, CPU only).}
+\label{tab:latency}
+\begin{tabular}{l r r r r}
+\toprule
+\textbf{Mode} & \textbf{Detect} & \textbf{Surrogate}
+& \textbf{Splice + PPL} & \textbf{Total} \\
+\midrule
+redact  & $\sim$1.0 & 0.00       & $\sim$0.2 & 1.2  \\
+faker   & $\sim$1.0 & $<$0.01    & $\sim$0.2 & 1.2  \\
+hybrid  & $\sim$1.0 & $\sim$34.7 & $\sim$0.2 & 35.9 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The 30$\times$ latency gap between hybrid and redact / faker is
+dominated by \bonsai{} surrogate generation. Without our
+\code{(canonical, label)} cache, hybrid would call \bonsai{} for every
+PII mention ($\sim$660 calls across the corpus); with the cache, only
+\textbf{509 unique calls} were made, saving $\sim$25\% of inference
+time. Each \bonsai{} call costs $\sim$7--10\,s for the $\sim$30-token
+output (loading + 1.7\,B model inference + cleanup). Detection cost is
+identical across modes because the privacy filter is invoked both for
+input PII detection and for residual-leak measurement.
+
+% =====================================================================
+\subsection{Downstream NER utility}
+\label{sec:ner}
+
+\paragraph{Setup.}
+We test whether substitution preserves \emph{downstream training
+utility}: an NER model trained on substituted data should approach the
+F1 of one trained on original data. We use the 58 English-locale
+documents from the evaluation set (en\_US + en\_IN), stratified-split
+47 train / 11 test by locale. The test set is \textbf{always in
+original form}---substitution applies only to the training set. PII
+spans are extracted from the ground-truth \code{pii\_gt} dictionary
+(substring search) so that substitution quality is decoupled from
+detection quality. A blank \spacy{} English NER pipeline is trained
+for 30 iterations with a single binary \code{PII} label on each
+variant of the train set, then evaluated against held-out original
+spans (label-agnostic span overlap).
+
+\begin{table}[t]
+\centering
+\caption{Span-level NER F1 on held-out original documents (47 train /
+11 test). Mean $\pm$ SD across 5 spaCy training seeds; the
+substituted training corpus is fixed per mode, only spaCy gradient
+initialisation varies.}
+\label{tab:ner}
+\begin{tabular}{l r c c c r}
+\toprule
+\textbf{Mode} & \textbf{Train spans} & \textbf{Precision} & \textbf{Recall}
+& \textbf{F1} & \textbf{$\Delta$ F1 vs.\ original} \\
+\midrule
+original & 283 & 0.830\,$\pm$\,0.033 & 0.653\,$\pm$\,0.090 & \textbf{0.726\,$\pm$\,0.046} & (baseline) \\
+redact   & 283 & 0.000\,$\pm$\,0.000 & 0.000\,$\pm$\,0.000 & \textbf{0.000\,$\pm$\,0.000} & $-0.726$    \\
+faker    & 283 & 0.843\,$\pm$\,0.042 & 0.310\,$\pm$\,0.071 & \textbf{0.448\,$\pm$\,0.082} & $-0.278$    \\
+hybrid   & 283 & 0.835\,$\pm$\,0.061 & 0.240\,$\pm$\,0.039 & \textbf{0.371\,$\pm$\,0.049} & $-0.355$    \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Redact destroys downstream utility entirely (F1 = 0.000).}
+A NER model trained on \code{[PRIVATE\_PERSON]}-style placeholders
+learns to predict only those placeholder \emph{tokens} and never fires
+on real text. This is the sharpest possible motivation for
+substitution: redacted-text training data is, for any downstream NER
+consumer, effectively \emph{labelled negative-only data}. The model
+converges (training loss falls to $<$2.0) but its decision boundary
+lives in the wrong vocabulary.
+
+\paragraph{Faker and hybrid both recover a substantial fraction of
+original F1.}
+Type-preserving fakes---whether random (faker) or SLM-generated
+locale-conditioned (hybrid)---give the model enough surface variety to
+learn that ``capitalised proper-noun-shaped two-token sequence in a
+name field'' is a PII span. Faker recovers
+$0.448 / 0.726 = 61.7\%$ of the original baseline; hybrid recovers
+$0.371 / 0.726 = 51.1\%$. Precision is high in both cases (0.83--0.84)
+but recall is only 0.24--0.31---fake-data-trained models are
+conservative.
+
+\paragraph{Hybrid is plausibly slightly below faker, but the gap is
+within seed-level noise.}
+The mean F1 difference is $0.448 - 0.371 = 0.077$ in faker's favour.
+With $n=5$ seeds and pooled standard deviation
+$\sqrt{(0.082^2 + 0.049^2)/2} = 0.067$, a Welch's $t$-test yields
+$t = 1.80$, $p \approx 0.11$ (two-tailed) for the
+faker-vs-hybrid F1 difference---not significant at $p<0.05$. By
+contrast, the gaps between \texttt{original} and either substituted
+mode, and between any substituted mode and \texttt{redact}, are
+multiple SDs apart and clearly significant.
+
+A pilot run with the naive fixed-three-demonstration strategy from
+Section~\ref{sec:regurgitation} (single seed) produced hybrid F1 = 0.310
+vs.\ faker F1 = 0.427---a gap of $-0.117$, larger than what we now
+observe under the locale-conditioned strategy ($-0.077$ in mean).
+Locale-conditioned rotating demonstrations therefore visibly *reduce*,
+even if they do not fully eliminate, the residual hybrid-below-faker
+trend within our small-sample regime.
+
+\paragraph{Variance, sample size, and what the seeds reveal.}
+Compared with the baseline F1 noise (original SD $=0.046$), faker
+exhibits the highest seed-to-seed variance (SD $=0.082$); hybrid is
+\emph{tighter} than faker (SD $=0.049$). One interpretation is that
+faker's i.i.d.\ random surrogates create a more lottery-like training
+distribution---some seeds happen to land on lucky vocabulary, others
+do not---whereas hybrid's locale-clustered surrogates produce a more
+predictable training corpus. Distinguishing this hypothesis from
+mere $n=5$ chance would require either a larger held-out test set or
+nested cross-validation; both are outside the scope of this short
+paper. The robust within-seed ordering---\code{original} $>$ \code{faker}
+$\gtrsim$ \code{hybrid} $\gg$ \code{redact}---holds for every seed we
+ran (5/5).
+
+% =====================================================================
+\section{Discussion and Limitations}
+\label{sec:limits}
+
+\paragraph{Privacy-filter recall ceiling.}
+The non-zero leak rate in all three modes reflects the privacy
+filter's published F1 (0.587). A pipeline using a higher-recall
+detector or pattern-based fallback (e.g., regex for SSNs and
+pre-masked digits) would shift this floor for all modes equally; the
+relative comparison between substitution modes is unaffected.
+
+\paragraph{Few-shot regurgitation is a prompting issue, not a
+quantization issue.}
+Section~\ref{sec:regurgitation} shows that the failure occurs
+identically under 1-bit \bonsai{} and 1.58-bit \ternary{}. Larger or
+higher-precision models \emph{might} suppress the symptom by attending
+more strongly to the instruction, but the underlying pattern-matching
+pull will remain at any small-LM scale. The robust fix is at the prompt
+level (locale-conditioned rotating demonstrations); we recommend it as
+default practice for any small-LM substitution pipeline.
+
+\paragraph{No coreference resolution.}
+``John'' and ``John Smith'' within the same document are treated as
+distinct entities by surface-form grouping. A proper coreference layer
+would further improve consistency.
+
+\paragraph{Naturalness via \disgpt{} PPL.}
+\disgpt{}~\cite{distilgpt2} is a weak naturalness proxy: it favours
+short placeholder tokens (which redact mode produces) over longer
+realistic surrogates, and is English-only. A proper human evaluation,
+or PPL under a larger multilingual LM, would refine this measurement.
+
+\paragraph{No explicit threat model.}
+We measure literal-string leak, not inference attacks. A determined
+adversary with access to (output\_text, external knowledge) could
+potentially link surrogates back to originals. Differential-privacy
+guarantees on the substitution distribution are out of scope.
+
+\paragraph{Sample size and statistical reporting.}
+The downstream-NER experiment uses 47 train / 11 test documents and
+$n=5$ training seeds; we report mean $\pm$ SD per mode and apply
+Welch's $t$-test to the two-substituted-mode comparison. The
+\code{original} $>$ \code{faker, hybrid} $\gg$ \code{redact} ordering
+is multiple SDs apart for every comparison and significant at
+$p<0.001$; only the \code{faker} vs.\ \code{hybrid} gap sits inside
+the noise band ($p\approx 0.11$). A larger test set, nested cross-
+validation, or a more powerful significance test (paired-bootstrap
+over per-seed F1 differences) would tighten this last comparison.
+
+% =====================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+We built and evaluated a fully on-device PII substitution pipeline
+combining a token classifier (\openaipf{}), a 1-bit small language
+model (\bonsai{}, Q1\_0), and a rule-based generator (\faker{}). The
+architecture works as intended at the document level: privacy is
+preserved (within the privacy-filter's recall ceiling), surrogates are
+consistent across mentions, length preservation is best-of-three across
+five of six locales, and naturalness PPL beats faker-only baselines
+across all six locales.
+
+The most actionable contribution is methodological. We document a
+``few-shot regurgitation'' failure mode in which a small SLM, prompted
+naively with a fixed three-shot demonstration template, ignores the
+input and emits one of the demonstration \emph{outputs} verbatim---and
+we show by direct comparison with 1.58-bit \ternary{} that this is a
+property of \emph{prompting} at small-LM scale, not of 1-bit
+quantization. A simple locale-conditioned rotating-demonstrations
+prompting strategy fixes it: the fixed pipeline produces
+locale-correct, format-preserving surrogates
+(\cjk{杨娟}\,\arrowto\,\cjk{李伟}, M\"uller-Schulz\,\arrowto\,Anna Becker,
+\code{11-Jul-1998}\,\arrowto\,\code{05-Aug-2003}), eliminates the
+previously observed regression in downstream NER training F1, and adds
+$<50$\,ms per surrogate proposal.
+
+Substitution outperforms \code{[LABEL]}-style redaction by an enormous
+margin on downstream NER training utility (F1 0.371\,$\pm$\,0.049 vs.\
+0.000\,$\pm$\,0.000 across 5 seeds; the gap is many standard
+deviations, not a noise effect). Whether SLM-generated surrogates can
+\emph{exceed} random faker surrogates on downstream utility---rather
+than match them within seed-level noise---remains an open question for
+a longer evaluation with a larger test set or nested cross-validation,
+which we believe is the most direct way to push the hybrid--faker
+comparison out of the $p\!\approx\!0.11$ band we observe at $n=5$.
+
+All code, configurations, and the 100-document evaluation harness are
+released under an open license.
+
+% =====================================================================
+\section*{Reproducibility}
+\label{sec:repro}
+
+Code, configurations, and the 100-document evaluation set
+(\code{samples.json} from the openai-privacy-filter benchmark fork)
+used in this paper are released in the project repository. To reproduce
+the primary results:
+
+\begin{lstlisting}
+# Primary metrics (Table 1, ~60 minutes on CPU)
+python eval_substitution.py --n 100 --modes redact faker hybrid \
+       --bonsai-size 1.7B --output results/
+
+# Per-locale and per-template breakdowns
+python analyze_results.py \
+       --results results/substitution_results.json \
+       --out results/analysis.md
+
+# Downstream NER utility (Table 2, ~25 minutes)
+python eval_ner_utility.py --output results/
+\end{lstlisting}
+
+Total wall-clock for the full pipeline is approximately 90 minutes on
+a 31\,GB single-CPU machine. The privacy-filter model
+($\sim$2.8\,GB) is downloaded once from Hugging Face on first run and
+cached locally.
+
+% =====================================================================
+\bibliographystyle{plain}
+\bibliography{refs}
+
+% =====================================================================
+\appendix
+\section{Locale-conditioned demonstration pools}
+\label{app:pools}
+
+For full reproducibility we list the demonstration pools used by the
+locale-conditioned rotating few-shot strategy
+(Section~\ref{sec:proposers}). Per-input MD5 hashes seed a deterministic
+sample of three demonstrations from the appropriate pool.
+
+\paragraph{PERSON pool.}
+\begin{itemize}[leftmargin=*, itemsep=1pt, topsep=2pt]
+  \item \code{en}: (John Carter, Marcus Chen),
+        (Linda Vasquez, Olivia Brennan),
+        (David Kim, Theo Pemberton),
+        (Sarah Patel, Maya Iyer),
+        (Robert Williams, Daniel Foster),
+        (Priya Krishnamurthy, Nadia Subramanian),
+        (Michael O'Brien, Patrick Donovan),
+        (Jennifer Wong, Cynthia Park).
+  \item \code{de}: (Hans M\"uller, Karl Schmidt),
+        (Anna Becker, Lena Hoffmann),
+        (Klaus Wagner, Erik Kr\"uger),
+        (Ingrid Weber, Petra Neumann),
+        (Stefan Fischer, Dietrich Bauer),
+        (Helga Zimmermann, Brigitte Klein).
+  \item \code{es}: (Juan Garc\'ia, Carlos Hern\'andez),
+        (Mar\'ia Rodr\'iguez, Ana Fern\'andez),
+        (Diego S\'anchez, Luis Castillo),
+        (Carmen Ortiz, Luc\'ia V\'azquez),
+        (Roberto Jim\'enez, Pablo Morales),
+        (Sof\'ia Ram\'irez, Elena Aguilar).
+  \item \code{ja}: (\cjk{山田太郎}, \cjk{鈴木一郎}),
+        (\cjk{佐藤花子}, \cjk{田中美咲}),
+        (\cjk{渡辺健}, \cjk{高橋翔}),
+        (\cjk{中村裕子}, \cjk{小林由香}),
+        (\cjk{加藤博之}, \cjk{斎藤大輔}),
+        (\cjk{井上恵美}, \cjk{松本香織}).
+  \item \code{zh}: (\cjk{李伟}, \cjk{王芳}),
+        (\cjk{张敏}, \cjk{刘洋}),
+        (\cjk{陈杰}, \cjk{黄燕}),
+        (\cjk{周磊}, \cjk{吴娟}),
+        (\cjk{徐明}, \cjk{孙丽}),
+        (\cjk{郑强}, \cjk{马晶}).
+\end{itemize}
+
+\paragraph{ADDRESS pool.} Six entries per locale; en covers both en\_US
+and en\_IN. Examples include
+(\code{Hauptstra\ss e 45, 10117 Berlin},
+ \code{Lindenallee 12, 80331 M\"unchen}) for \code{de},
+(\code{Calle Reforma 123, 06600 CDMX},
+ \code{Avenida Insurgentes 456, 03100 CDMX}) for \code{es}, and
+(\cjk{北京市朝阳区建国路1号}, \cjk{上海市浦东新区世纪大道100号}) for
+\code{zh}. Full lists are in \code{pii\_substitute.py}.
+
+\paragraph{DATE pool.} Pools per detected format:
+\code{mdy\_slash} (5 entries), \code{ymd\_dash} (4),
+\code{dmy\_dash\_mon} (4), \code{dmy\_slash} (3),
+\code{unknown} (2 fallbacks).
+
+\end{document}

@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# LaTeX intermediate build artefacts (the compiled main.pdf is committed)
+*.aux
+*.log
+*.bbl
+*.blg
+*.toc
+*.out
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+
+# Local "fallback" build of main.tex (only useful when CJKutf8 is missing)
+paper/main_local.*
+
+# Heavyweight dependencies (see SETUP.md for installation instructions)
+bonsai-demo/
+
+# Hugging Face cache (downloaded models live here, ~3 GB total)
+.cache/
+
+# Local sample input / output dumps from the CLI
+out/
+tmp/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/

@@ -1,0 +1,41 @@
+                    input document text
+                            │
+                            ▼
+              ┌──────────────────────────────┐
+              │  openai/privacy-filter       │
+              │  1.5B MoE token classifier   │
+              │  (BIOES → char spans)        │
+              │  CPU bf16, ~1s/512 tokens    │
+              └──────────────┬───────────────┘
+                             │ List[(start,end,label)]
+                             ▼
+              ┌──────────────────────────────┐
+              │  EntityResolver              │
+              │  (canonical, label) keys     │
+              │  one surrogate per entity    │
+              └──────────────┬───────────────┘
+                             │ unique entities
+                  ┌──────────┴──────────┐
+                  ▼                     ▼
+        ┌──────────────────┐   ┌──────────────────┐
+        │  Bonsai-1.7B     │   │  faker (rules)   │
+        │  1-bit Q1_0      │   │  EMAIL/PHONE/    │
+        │  Qwen3-based     │   │  ACCT/URL/SECRET │
+        │  PERSON/         │   │  deterministic   │
+        │  ADDRESS/        │   │                  │
+        │  DATE_PII        │   │                  │
+        └──────────┬───────┘   └────────┬─────────┘
+                   │                    │
+                   └────────┬───────────┘
+                            │ surrogate per entity
+                            ▼
+              ┌──────────────────────────────┐
+              │  apply_substitution          │
+              │  R-to-L splice, preserving   │
+              │  whitespace; cache by        │
+              │  (canonical, label)          │
+              └──────────────┬───────────────┘
+                             │
+                             ▼
+                    output document text
+                  (same shape, no real PII)
