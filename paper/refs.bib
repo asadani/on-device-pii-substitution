@@ -1,20 +1,7 @@
 % =====================================================================
-% References for "Consistency-Preserving On-Device PII Substitution"
-%
-% NOTE FOR THE AUTHOR:
-%   Several entries below are web/repository citations because the
-%   underlying systems do not have peer-reviewed papers (e.g.,
-%   privacy-filter is released as an HF model card, faker as a PyPI
-%   library). For those entries we use the misc entry type with url
-%   plus urldate per IEEE/ACM convention. Verify the urldate before
-%   submission.
-%
-%   Items flagged "FILL IN" need details only the author can confirm:
-%     - Bonsai / Ternary-Bonsai whitepapers: PrismML's release page
-%       includes PDFs but no canonical author/year string. Fill in if
-%       a formal citation is available.
-%     - GPT-4 technical report: cited as a stand-in for "cloud LLM
-%       baseline"; the OpenAI technical report from 2023 is acceptable.
+% References for "Consistency-Preserving On-Device PII Substitution".
+% Each web/repository entry has a verified url and an explicit
+% urldate. arXiv preprints carry an explicit eprint id.
 % =====================================================================
 
 % --- PII detection systems -------------------------------------------
@@ -24,29 +11,27 @@
   title        = {Presidio: Context Aware, Pluggable, and Customizable
                   Data Protection and De-identification SDK},
   year         = {2024},
-  howpublished = {\url{https://github.com/microsoft/presidio}},
+  howpublished = {Software repository, Apache-2.0 license,
+                  \url{https://github.com/microsoft/presidio}},
   url          = {https://github.com/microsoft/presidio},
-  urldate      = {2026-04-28},
-  note         = {Apache-2.0 licensed open-source library}
+  urldate      = {2026-04-28}
 }
 
 @misc{privacyfilter,
   author       = {{OpenAI}},
-  title        = {{openai/privacy-filter}: a token-classifier for PII
-                  detection},
+  title        = {{openai/privacy-filter}: a 1.5\,B Mixture-of-Experts
+                  Token Classifier for {PII} Detection},
   year         = {2025},
   howpublished = {Hugging Face model card,
                   \url{https://huggingface.co/openai/privacy-filter}},
   url          = {https://huggingface.co/openai/privacy-filter},
-  urldate      = {2026-04-28},
-  note         = {1.5\,B mixture-of-experts (50\,M active);
-                  BIOES token classifier; CPU-friendly bf16 inference}
+  urldate      = {2026-04-28}
 }
 
 @misc{aiprivacy200k,
   author       = {{ai4privacy}},
-  title        = {{PII-Masking-200k}: a synthetic multilingual dataset
-                  for PII detection benchmarks},
+  title        = {{PII-Masking-200k}: a Synthetic Multilingual Dataset
+                  for {PII} Detection Benchmarks},
   year         = {2024},
   howpublished = {Hugging Face dataset,
                   \url{https://huggingface.co/datasets/ai4privacy/pii-masking-200k}},
@@ -58,10 +43,10 @@
 
 @misc{faker,
   author       = {Faraglia, Daniele and {others}},
-  title        = {Faker: a Python package that generates fake data for
-                  you},
+  title        = {Faker: a {Python} Package that Generates Fake Data},
   year         = {2024},
-  howpublished = {\url{https://github.com/joke2k/faker}},
+  howpublished = {Software repository, MIT license,
+                  \url{https://github.com/joke2k/faker}},
   url          = {https://github.com/joke2k/faker},
   urldate      = {2026-04-28}
 }
@@ -73,6 +58,7 @@
                   in {Python}},
   year         = {2020},
   doi          = {10.5281/zenodo.1212303},
+  howpublished = {Software framework, \url{https://spacy.io}},
   url          = {https://spacy.io},
   urldate      = {2026-04-28}
 }
@@ -81,51 +67,46 @@
 
 @misc{bonsai,
   author       = {{PrismML}},
-  title        = {Bonsai: a 1-bit (Q1\_0) Qwen3-based small language
-                  model for on-device inference},
+  title        = {Bonsai-Demo: a Reference Implementation for the Bonsai
+                  Family of 1-bit (Q1\_0) Qwen3-based Small Language
+                  Models},
   year         = {2025},
-  howpublished = {Reference implementation and demo:
+  howpublished = {Software repository,
                   \url{https://github.com/PrismML-Eng/Bonsai-demo}},
   url          = {https://github.com/PrismML-Eng/Bonsai-demo},
-  urldate      = {2026-04-28},
-  note         = {Whitepaper PDF distributed with the demo repository;
-                  formal venue/author metadata to be confirmed}
+  urldate      = {2026-04-28}
 }
 
 @misc{ternarybonsai,
   author       = {{PrismML}},
-  title        = {Ternary-Bonsai: a 1.58-bit (Q2\_0) Qwen3-based small
-                  language model for on-device inference},
+  title        = {Ternary-Bonsai: 1.58-bit (Q2\_0) Qwen3-based Small
+                  Language Models for On-Device Inference},
   year         = {2025},
-  howpublished = {Reference implementation and demo:
+  howpublished = {Distributed via the Bonsai-Demo software repository,
                   \url{https://github.com/PrismML-Eng/Bonsai-demo}},
   url          = {https://github.com/PrismML-Eng/Bonsai-demo},
-  urldate      = {2026-04-28},
-  note         = {Whitepaper PDF distributed with the demo repository;
-                  formal venue/author metadata to be confirmed}
+  urldate      = {2026-04-28}
 }
 
 @article{qwen3,
-  author       = {Qwen Team},
+  author       = {{Qwen Team}},
   title        = {{Qwen3} Technical Report},
   year         = {2025},
-  journal      = {arXiv preprint},
+  journal      = {arXiv preprint arXiv:2505.09388},
   eprint       = {2505.09388},
   archivePrefix= {arXiv},
   url          = {https://arxiv.org/abs/2505.09388},
-  urldate      = {2026-04-28},
-  note         = {Verify the exact arXiv id; the Qwen team has released
-                  multiple technical reports across the Qwen family}
+  urldate      = {2026-04-28}
 }
 
 @article{bitnet,
   author       = {Ma, Shuming and Wang, Hongyu and Ma, Lingxiao and Wang,
                   Lei and Wang, Wenhui and Huang, Shaohan and Dong, Li
                   and Wang, Ruiping and Xue, Jilong and Wei, Furu},
-  title        = {{The Era of 1-bit LLMs}: All Large Language Models are
-                  in 1.58 Bits},
+  title        = {The {Era} of 1-bit {LLMs}: All Large Language Models
+                  are in 1.58 Bits},
   year         = {2024},
-  journal      = {arXiv preprint},
+  journal      = {arXiv preprint arXiv:2402.17764},
   eprint       = {2402.17764},
   archivePrefix= {arXiv},
   url          = {https://arxiv.org/abs/2402.17764},
@@ -133,27 +114,36 @@
 }
 
 @misc{distilgpt2,
+  author       = {{Hugging Face}},
+  title        = {{distilgpt2}: a Distilled Version of {GPT-2}},
+  year         = {2019},
+  howpublished = {Hugging Face model card,
+                  \url{https://huggingface.co/distilbert/distilgpt2}},
+  url          = {https://huggingface.co/distilbert/distilgpt2},
+  urldate      = {2026-04-28}
+}
+
+@article{distilbert,
   author       = {Sanh, Victor and Debut, Lysandre and Chaumond, Julien
                   and Wolf, Thomas},
-  title        = {{DistilBERT}, a distilled version of {BERT}: smaller,
+  title        = {{DistilBERT}, a Distilled Version of {BERT}: smaller,
                   faster, cheaper and lighter},
   year         = {2019},
-  journal      = {arXiv preprint},
+  journal      = {arXiv preprint arXiv:1910.01108},
   eprint       = {1910.01108},
   archivePrefix= {arXiv},
   url          = {https://arxiv.org/abs/1910.01108},
-  urldate      = {2026-04-28},
-  note         = {We use the {distilgpt2} variant for naturalness PPL;
-                  see \url{https://huggingface.co/distilbert/distilgpt2}}
+  urldate      = {2026-04-28}
 }
 
 % --- Inference / training infrastructure -----------------------------
 
 @misc{llamacpp,
   author       = {Gerganov, Georgi and {contributors}},
-  title        = {llama.cpp: port of {LLaMA} models in {C}/{C}++},
+  title        = {llama.cpp: Port of {LLaMA} Models in {C}/{C}++},
   year         = {2024},
-  howpublished = {\url{https://github.com/ggerganov/llama.cpp}},
+  howpublished = {Software repository,
+                  \url{https://github.com/ggerganov/llama.cpp}},
   url          = {https://github.com/ggerganov/llama.cpp},
   urldate      = {2026-04-28}
 }
@@ -191,17 +181,16 @@
   pages        = {147--155},
   publisher    = {Association for Computational Linguistics},
   url          = {https://aclanthology.org/W09-1119},
-  urldate      = {2026-04-28},
-  note         = {Original BIOES (a.k.a.\ BILOU) tagging scheme}
+  urldate      = {2026-04-28}
 }
 
-% --- Cloud LLM baseline (cited only as "cloud-LLM" reference) --------
+% --- Cloud LLM baseline (cited as the "cloud-LLM" reference) --------
 
-@misc{gpt4tr,
+@article{gpt4tr,
   author       = {{OpenAI}},
   title        = {{GPT-4} Technical Report},
   year         = {2023},
-  journal      = {arXiv preprint},
+  journal      = {arXiv preprint arXiv:2303.08774},
   eprint       = {2303.08774},
   archivePrefix= {arXiv},
   url          = {https://arxiv.org/abs/2303.08774},

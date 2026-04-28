@@ -33,6 +33,12 @@
 \usepackage[a4paper, margin=1in]{geometry}
 \usepackage{lmodern}                 % scalable Latin Modern fonts
 \usepackage{microtype}               % subtle typographic improvements
+% Long monospace tokens (Bonsai-1.7B, openai/privacy-filter, ...) do
+% not break by default and produce overfull hboxes near the right
+% margin. \sloppy + emergencystretch lets LaTeX absorb the slack with
+% slightly looser inter-word spacing instead.
+\sloppy
+\setlength{\emergencystretch}{3em}
 
 % ---------------------------------------------------------------------
 % CJK rendering for Chinese / Japanese example strings.
@@ -91,8 +97,11 @@
 % \cjk{...} wraps a string in a CJK environment so that CJKutf8 +
 % pdfLaTeX renders the Han / kana glyphs correctly. To swap in
 % xeCJK later, redefine this macro to \texttt{#1} (XeLaTeX handles
-% CJK natively when xeCJK is loaded).
+% CJK natively when xeCJK is loaded).  \cjkj{...} forces the Japanese
+% Mincho font (min) for strings whose kanji fall outside gbsn's
+% coverage (e.g., 鈴, 咲, 辺, 斎, 輔).
 \newcommand{\cjk}[1]{\begin{CJK*}{UTF8}{gbsn}#1\end{CJK*}}
+\newcommand{\cjkj}[1]{\begin{CJK*}{UTF8}{min}#1\end{CJK*}}
 
 % ---------------------------------------------------------------------
 % Title block
@@ -123,9 +132,11 @@ classifier (\openaipf{}, with 50\,M active parameters) detects spans, an
 entity resolver groups same-string mentions, and a 1-bit small language
 model (\bonsai{}, Q1\_0) proposes contextual surrogates for names,
 addresses, and dates while a rule-based generator (\faker{}) handles
-fully patterned fields. To our knowledge, this is the first published
-evaluation of an end-to-end on-device PII substitution stack at this
-quantization level. We report a \emph{prompting} finding that turns out
+fully patterned fields. We are not aware of a prior published
+evaluation of an end-to-end on-device PII substitution stack that
+combines a token-classifier, a 1-bit SLM, and a rule-based generator;
+this paper aims to fill that gap. We report a \emph{prompting} finding
+that turns out
 to be more important than the quantization choice: with a naive
 fixed-three-shot demonstration, both 1-bit \bonsai{} and 1.58-bit
 \ternary{} regurgitate the demonstration outputs verbatim regardless of
@@ -141,7 +152,7 @@ M\"uller-Schulz\arrowto{}Anna Becker,
 \code{11-Jul-1998}\arrowto{}\code{05-Aug-2003}), achieves downstream
 NER training F1 within seed-level noise of faker-only baselines
 (0.371\,$\pm$\,0.049 vs.\ 0.448\,$\pm$\,0.082, $n=5$ seeds, Welch's
-$p\approx 0.11$), and beats faker on length preservation in 5 of 6
+$p\approx 0.12$), and beats faker on length preservation in 5 of 6
 locales.
 We argue that small-LM PII substitution is viable on-device, and that
 prompt engineering matters more than quantization at this scale.
@@ -195,9 +206,12 @@ distribution are out of scope.
   \item A reproducible on-device substitution pipeline combining
         \openaipf{}, \bonsai{} (Q1\_0), and \faker{}, with all code and
         configurations released.
-  \item The first quantitative comparison of redact / faker-only /
-        hybrid substitution modes under the constraint of CPU-only
-        inference, on 100 multi-template multilingual documents.
+  \item A quantitative comparison of redact / faker-only / hybrid
+        substitution modes under the constraint of CPU-only inference,
+        on 100 multi-template multilingual documents. We are not aware
+        of a directly comparable prior result that fixes all three
+        constraints (consistency, type-preservation, and on-device
+        execution) together.
   \item \textbf{Identification and isolation of a ``few-shot
         regurgitation'' failure mode} in small SLMs at extreme
         quantization, validated by showing that 1-bit \bonsai{} and
@@ -218,11 +232,19 @@ distribution are out of scope.
 \subsection{PII detection}
 Microsoft Presidio~\cite{presidio} combines regex, \spacy{} NER, and
 rule-based recognisers. The \openaipf{} model~\cite{privacyfilter}
-(1.5\,B MoE, 50\,M active) is a fine-tuned encoder using BIOES
-tags~\cite{ratinov2009bioes} over eight PII categories. Its published
-F1 on a seven-template synthetic benchmark is 0.587 (precision 0.619,
-recall 0.627), with weakness on dates (44.5\% of false positives) and
-non-English addresses.
+(1.5\,B MoE, 50\,M active) is a fine-tuned encoder using BIOES /
+BILOU-style token tags (popularised in NER by Ratinov and Roth~\cite{ratinov2009bioes})
+over eight PII categories. Running the
+inference harness shipped with the model on its bundled
+seven-template synthetic benchmark
+(\code{samples.json}, $N{=}100$), we measure F1 = 0.587 (precision
+0.619, recall 0.627), with the largest source of false positives being
+dates (44.5\% of all FPs) and the largest source of false negatives
+being non-English addresses (these numbers are computed by us, from
+the same harness; see Section~\ref{sec:setup}). We use these as the
+detection-side floor for all subsequent comparisons, since every mode
+in our experiments inherits the same detector and therefore the same
+recall ceiling.
 
 \subsection{Synthetic PII and anonymization}
 \faker{}~\cite{faker} is the de-facto rule-based generator for
@@ -237,9 +259,11 @@ The Bonsai family (1-bit Q1\_0)~\cite{bonsai} and Ternary-Bonsai
 (1.58-bit Q2\_0)~\cite{ternarybonsai} are Qwen3-based~\cite{qwen3}
 decoder-only LMs trained for extreme quantization. We run inference via
 \code{llama.cpp}~\cite{llamacpp}. Prior work~\cite{bitnet} has
-evaluated extreme-quantization SLMs on QA-style benchmarks but not, to
-our knowledge, on generative-substitution tasks where input copying is
-a failure mode.
+evaluated extreme-quantization SLMs on QA-style benchmarks; we did
+not find published evaluations of these models on
+generative-substitution tasks where input copying or
+demonstration-regurgitation is a failure mode (the specific failure
+we document in Section~\ref{sec:regurgitation}).
 
 \subsection{Downstream-utility evaluation}
 Prior anonymization work typically reports privacy and naturalness in
@@ -422,10 +446,12 @@ deterministically cached per \code{(mode, family, canonical, label)}.
 
 \paragraph{Privacy floor.}
 The leak rate of 0.226 is \emph{identical} across all three modes:
-every mode misses the same ground-truth values, which corresponds to
-the published privacy-filter recall of 0.627. The architectural choice
-between redact / faker / hybrid does not affect privacy at all---only
-\emph{what to do} with the spans the filter catches.
+every mode misses the same ground-truth values, consistent with the
+detection-side recall ($\approx 0.627$) we measured for the privacy
+filter on the same data (Section~\ref{sec:related}). The
+architectural choice between redact / faker / hybrid does not affect
+privacy at all---only \emph{what to do} with the spans the filter
+catches.
 
 \paragraph{Per-locale (PPL).}
 Hybrid is the PPL winner over faker in \textbf{all six locales}:
@@ -567,10 +593,11 @@ spans (label-agnostic span overlap).
 substituted training corpus is fixed per mode, only spaCy gradient
 initialisation varies.}
 \label{tab:ner}
+\setlength{\tabcolsep}{4pt}
 \begin{tabular}{l r c c c r}
 \toprule
 \textbf{Mode} & \textbf{Train spans} & \textbf{Precision} & \textbf{Recall}
-& \textbf{F1} & \textbf{$\Delta$ F1 vs.\ original} \\
+& \textbf{F1} & \textbf{$\Delta$F1 vs.\ orig.} \\
 \midrule
 original & 283 & 0.830\,$\pm$\,0.033 & 0.653\,$\pm$\,0.090 & \textbf{0.726\,$\pm$\,0.046} & (baseline) \\
 redact   & 283 & 0.000\,$\pm$\,0.000 & 0.000\,$\pm$\,0.000 & \textbf{0.000\,$\pm$\,0.000} & $-0.726$    \\
@@ -603,13 +630,14 @@ conservative.
 \paragraph{Hybrid is plausibly slightly below faker, but the gap is
 within seed-level noise.}
 The mean F1 difference is $0.448 - 0.371 = 0.077$ in faker's favour.
-With $n=5$ seeds and pooled standard deviation
-$\sqrt{(0.082^2 + 0.049^2)/2} = 0.067$, a Welch's $t$-test yields
-$t = 1.80$, $p \approx 0.11$ (two-tailed) for the
-faker-vs-hybrid F1 difference---not significant at $p<0.05$. By
-contrast, the gaps between \texttt{original} and either substituted
-mode, and between any substituted mode and \texttt{redact}, are
-multiple SDs apart and clearly significant.
+A Welch's two-sample $t$-test (with $n_{\textrm{f}}=n_{\textrm{h}}=5$ and
+unequal variances) gives standard error
+$\mathrm{SE} = \sqrt{0.082^2/5 + 0.049^2/5} = 0.0427$,
+$t = 0.077 / 0.0427 = 1.80$, Welch--Satterthwaite degrees of freedom
+$\approx 6.5$, and two-tailed $p \approx 0.12$---not significant at
+$p<0.05$. By contrast, the gaps between \texttt{original} and either
+substituted mode, and between any substituted mode and \texttt{redact},
+are multiple SDs apart and clearly significant.
 
 A pilot run with the naive fixed-three-demonstration strategy from
 Section~\ref{sec:regurgitation} (single seed) produced hybrid F1 = 0.310
@@ -639,7 +667,8 @@ ran (5/5).
 
 \paragraph{Privacy-filter recall ceiling.}
 The non-zero leak rate in all three modes reflects the privacy
-filter's published F1 (0.587). A pipeline using a higher-recall
+filter's measured detection F1 of 0.587 (Section~\ref{sec:related}).
+A pipeline using a higher-recall
 detector or pattern-based fallback (e.g., regex for SSNs and
 pre-masked digits) would shift this floor for all modes equally; the
 relative comparison between substitution modes is unaffected.
@@ -678,7 +707,7 @@ Welch's $t$-test to the two-substituted-mode comparison. The
 \code{original} $>$ \code{faker, hybrid} $\gg$ \code{redact} ordering
 is multiple SDs apart for every comparison and significant at
 $p<0.001$; only the \code{faker} vs.\ \code{hybrid} gap sits inside
-the noise band ($p\approx 0.11$). A larger test set, nested cross-
+the noise band ($p\approx 0.12$). A larger test set, nested cross-
 validation, or a more powerful significance test (paired-bootstrap
 over per-seed F1 differences) would tighten this last comparison.
 
@@ -717,7 +746,7 @@ deviations, not a noise effect). Whether SLM-generated surrogates can
 than match them within seed-level noise---remains an open question for
 a longer evaluation with a larger test set or nested cross-validation,
 which we believe is the most direct way to push the hybrid--faker
-comparison out of the $p\!\approx\!0.11$ band we observe at $n=5$.
+comparison out of the $p\!\approx\!0.12$ band we observe at $n=5$.
 
 All code, configurations, and the 100-document evaluation harness are
 released under an open license.
@@ -727,9 +756,9 @@ released under an open license.
 \label{sec:repro}
 
 Code, configurations, and the 100-document evaluation set
-(\code{samples.json} from the openai-privacy-filter benchmark fork)
-used in this paper are released in the project repository. To reproduce
-the primary results:
+(\code{samples.json}, the synthetic multi-template benchmark shipped
+with the \openaipf{} inference harness) used in this paper are
+released in the project repository. To reproduce the primary results:
 
 \begin{lstlisting}
 # Primary metrics (Table 1, ~60 minutes on CPU)
@@ -749,6 +778,27 @@ Total wall-clock for the full pipeline is approximately 90 minutes on
 a 31\,GB single-CPU machine. The privacy-filter model
 ($\sim$2.8\,GB) is downloaded once from Hugging Face on first run and
 cached locally.
+
+% =====================================================================
+\section*{Use of generative AI assistance}
+\label{sec:aiuse}
+
+In line with arXiv's policy on the use of generative AI in scholarly
+work, the author discloses that a large language model assistant
+(Anthropic's Claude) was used during the preparation of this manuscript.
+Specifically: (i) the assistant helped explore and draft prose for the
+introduction, related-work, and discussion sections from the author's
+notes and bullet-point outlines; (ii) the assistant helped scaffold
+LaTeX, bibliography, and table formatting; and (iii) the assistant ran
+the experimental scripts and reported the resulting numerical outputs
+back to the author. All quantitative results in
+Tables~\ref{tab:primary}, \ref{tab:latency}, and \ref{tab:ner} are
+computed by the released code (\code{eval\_substitution.py},
+\code{eval\_ner\_utility.py}) on the released artefact and are
+reproducible by any reader; no result was generated, projected, or
+hallucinated by the language model. The author is solely responsible
+for the technical claims, methodology, statistical analysis, and the
+final wording of the manuscript.
 
 % =====================================================================
 \bibliographystyle{plain}
@@ -786,12 +836,12 @@ sample of three demonstrations from the appropriate pool.
         (Carmen Ortiz, Luc\'ia V\'azquez),
         (Roberto Jim\'enez, Pablo Morales),
         (Sof\'ia Ram\'irez, Elena Aguilar).
-  \item \code{ja}: (\cjk{山田太郎}, \cjk{鈴木一郎}),
-        (\cjk{佐藤花子}, \cjk{田中美咲}),
-        (\cjk{渡辺健}, \cjk{高橋翔}),
-        (\cjk{中村裕子}, \cjk{小林由香}),
-        (\cjk{加藤博之}, \cjk{斎藤大輔}),
-        (\cjk{井上恵美}, \cjk{松本香織}).
+  \item \code{ja}: (\cjkj{山田太郎}, \cjkj{鈴木一郎}),
+        (\cjkj{佐藤花子}, \cjkj{田中美咲}),
+        (\cjkj{渡辺健}, \cjkj{高橋翔}),
+        (\cjkj{中村裕子}, \cjkj{小林由香}),
+        (\cjkj{加藤博之}, \cjkj{斎藤大輔}),
+        (\cjkj{井上恵美}, \cjkj{松本香織}).
   \item \code{zh}: (\cjk{李伟}, \cjk{王芳}),
         (\cjk{张敏}, \cjk{刘洋}),
         (\cjk{陈杰}, \cjk{黄燕}),
