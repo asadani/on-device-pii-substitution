@@ -57,6 +57,8 @@ strategy that fixes the few-shot regurgitation failure mode of small SLMs
 │   ├── refs.bib             # 14 references (URL + urldate)
 │   ├── build.sh
 │   └── figures/
+├── data/
+│   └── samples.json         # 100-doc synthetic eval set (7 templates × 6 locales, ~240 KB)
 ├── results/                 # JSON + Markdown outputs from the runs cited in the paper
 ├── docs/
 │   └── short_paper.md       # markdown source (paper precursor)

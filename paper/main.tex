@@ -93,6 +93,7 @@
 \newcommand{\faker}{\code{faker}}
 \newcommand{\spacy}{\code{spaCy}}
 \newcommand{\disgpt}{\code{distilgpt2}}
+\newcommand{\xglm}{\code{XGLM-564M}}
 
 % \cjk{...} wraps a string in a CJK environment so that CJKutf8 +
 % pdfLaTeX renders the Han / kana glyphs correctly. To swap in
@@ -106,8 +107,9 @@
 % ---------------------------------------------------------------------
 % Title block
 % ---------------------------------------------------------------------
-\title{Consistency-Preserving On-Device PII Substitution\\
-       with a 1-bit Small Language Model}
+\title{Locale-Conditioned Few-Shot Prompting Prevents\\
+       Demonstration Regurgitation in On-Device PII Substitution\\
+       with Small Language Models}
 
 \author{
   Anuj Sadani\\
@@ -149,13 +151,26 @@ per-input MD5 hash deterministically samples which three demonstrations
 appear in the prompt. With the fix, the same 1-bit model produces
 locale-correct surrogates (\cjk{杨娟}\arrowto{}\cjk{李伟},
 M\"uller-Schulz\arrowto{}Anna Becker,
-\code{11-Jul-1998}\arrowto{}\code{05-Aug-2003}), achieves downstream
-NER training F1 within seed-level noise of faker-only baselines
-(0.371\,$\pm$\,0.049 vs.\ 0.448\,$\pm$\,0.082, $n=5$ seeds, Welch's
-$p\approx 0.12$), and beats faker on length preservation in 5 of 6
-locales.
-We argue that small-LM PII substitution is viable on-device, and that
-prompt engineering matters more than quantization at this scale.
+\code{11-Jul-1998}\arrowto{}\code{05-Aug-2003}); 482 of 482 unique
+\bonsai{} surrogate-proposal calls succeed (no echoes, no errors)
+under this strategy. On a generated 2000-document multilingual corpus,
+hybrid PPL beats \faker{} in \emph{all six} locales under a
+multilingual evaluator (\xglm{}; e.g., zh\_CN
+68.3 vs.\ 78.9, ja\_JP 55.8 vs.\ 82.4), and length preservation is
+the best of three modes in 4 of 6 locales. On a downstream NER
+experiment (400 train / 100 test, English locales), redact training
+data yields F1$=$0.000 (5/5 seeds), faker yields
+0.656\,$\pm$\,0.033, and original-text training yields
+0.960\,$\pm$\,0.004; on a matched 160/40 subset that additionally
+includes \code{hybrid}, faker (0.506\,$\pm$\,0.056) clearly
+outperforms hybrid (0.346\,$\pm$\,0.044) at $p<0.001$
+(Welch's $t=5.0$). We report this as an \emph{honest negative finding}:
+contextually-realistic SLM surrogates produce more natural-looking
+text but a less varied training distribution, and downstream NER
+training benefits more from variety than from naturalness. We argue
+that small-LM PII substitution is viable on-device, that prompt
+engineering matters more than quantization at this scale, and that
+``natural'' is not the same as ``useful for training.''
 The code repository for this work is accessible at
 \url{https://github.com/asadani/on-device-pii-substitution}.
 \end{abstract}
@@ -223,8 +238,13 @@ distribution are out of scope.
   \item \textbf{A simple and effective fix: locale-conditioned rotating
         few-shot demonstrations}, with deterministic per-input demo
         sampling that preserves cache-friendliness. The fix eliminates
-        the regression in downstream NER F1 that we observed under naive
-        prompting.
+        the qualitative regurgitation failure (482/482 \bonsai{} calls
+        succeed, no echoes) and improves naturalness PPL across all six
+        locales. It does \emph{not}, however, make hybrid surrogates a
+        better source of NER training data than \faker{}'s random ones
+        at the larger sample sizes we now evaluate---a tradeoff between
+        naturalness and training-distribution variety that we report as
+        an honest negative finding (\cref{sec:ner}).
 \end{enumerate}
 
 % =====================================================================
@@ -368,12 +388,20 @@ such as \code{is[PRIVATE\_PERSON]} (which would inflate perplexity).
 \label{sec:setup}
 
 \paragraph{Dataset.}
-100 documents from the \openaipf{} evaluation
-set~\cite{aiprivacy200k,privacyfilter}, covering 7 templates (1099,
+We use the \openaipf{} synthetic-document
+generator~\cite{aiprivacy200k,privacyfilter} (the same template engine
+that produced the 100-document benchmark shipped with the model card)
+to generate a fresh, larger 2000-document corpus
+(\code{data/samples\_2000.json}, seed=42), covering 7 templates (1099,
 W-2, auto\_insurance, bank\_statement, invoice, mortgage\_insurance,
-paystub) and 6 locales (en\_US $n{=}42$, en\_IN 16, de\_DE 12, es\_MX
-10, ja\_JP 10, zh\_CN 10). Each document carries ground-truth PII
-values ($\sim$6.6 per document on average).
+paystub) and 6 locales (en\_US $n{=}840$, en\_IN 320, de\_DE 240,
+es\_MX 200, ja\_JP 200, zh\_CN 200). Each document carries ground-truth
+PII values ($\sim$6.6 per document on average). Primary metrics
+(\cref{tab:primary}) are reported on the first 100 documents
+(en\_US 40, en\_IN 21, de\_DE 12, zh\_CN 12, ja\_JP 8, es\_MX 7); the
+downstream-NER experiment (\cref{sec:ner}) is run on a larger
+500-document English subset to give the train/test split enough power
+for the small-effect comparisons it requires.
 
 \paragraph{Models.}
 \begin{itemize}[leftmargin=*, itemsep=2pt, topsep=2pt]
@@ -381,8 +409,9 @@ values ($\sim$6.6 per document on average).
         CPU~\cite{privacyfilter,transformers}.
   \item SLM: \bonsai{} Q1\_0~\cite{bonsai}, CPU via
         \code{llama.cpp}~\cite{llamacpp}.
-  \item Naturalness evaluator: \disgpt{} ($\sim$82\,M
-        parameters)~\cite{distilgpt2}, CPU.
+  \item Naturalness evaluator: \xglm{} ($\sim$564\,M parameters,
+        multilingual causal LM trained on 30 languages including all
+        six locales evaluated here)~\cite{xglm}, CPU.
   \item Fallback surrogate generator: \faker{}~\cite{faker}.
   \item Downstream NER: \spacy{} blank English pipeline~\cite{spacy}.
 \end{itemize}
@@ -409,8 +438,11 @@ We report four per-document metrics, averaged across the corpus:
   \item \textbf{Leak rate}: fraction of \emph{ground-truth PII strings}
         that still appear verbatim (case-insensitive substring) in the
         output. Lower is better.
-  \item \textbf{Naturalness PPL}: \disgpt{} perplexity over the output
-        text, chunked at 1024 tokens. Lower is more natural.
+  \item \textbf{Naturalness PPL}: \xglm{} perplexity over the output
+        text, chunked at 1024 tokens. Lower is more natural. \xglm{}
+        is multilingual and covers all six evaluation locales, so
+        cross-locale PPL numbers are directly comparable rather than
+        biased toward Latin-script outputs.
   \item \textbf{Consistency rate}: for entities appearing $\ge 2$ times
         in the input, fraction where the output uses the same surrogate
         at every mention. Higher is better.
@@ -422,7 +454,8 @@ We report four per-document metrics, averaged across the corpus:
 \begin{table}[t]
 \centering
 \caption{Primary metrics ($N{=}100$, averaged across all 7 templates
-and 6 locales).}
+and 6 locales). Naturalness PPL is computed under the multilingual
+\xglm{}~\cite{xglm} causal LM (covering all six evaluation locales).}
 \label{tab:primary}
 \begin{tabular}{l c c c c r}
 \toprule
@@ -430,24 +463,27 @@ and 6 locales).}
 & \textbf{Consistency\,$\uparrow$} & \textbf{Length pres.\,$\uparrow$}
 & \textbf{Avg.\ latency} \\
 \midrule
-redact  & 0.226 & 27.8          & 1.000 & 0.973          & 1.2\,s  \\
-faker   & 0.226 & 47.3          & 1.000 & 0.978          & 1.1\,s  \\
-hybrid  & 0.226 & \textbf{42.8} & 1.000 & \textbf{0.982} & 38.1\,s \\
+redact  & 0.249 & 39.4          & 1.000 & 0.979          & 1.7\,s  \\
+faker   & 0.249 & 84.0          & 1.000 & 0.976          & 1.6\,s  \\
+hybrid  & 0.249 & \textbf{69.9} & 1.000 & \textbf{0.982} & 41.2\,s \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \paragraph{Headline result.}
-Hybrid PPL (42.8) is lower than faker (47.3, $-9.5\%$) while length
-preservation is the best of the three modes (0.982 vs.\ 0.978, 0.973).
-Redact achieves the lowest PPL (27.8), but this is an artefact of
-\disgpt{}'s tokenisation (placeholder tokens cluster predictably---not
-because the text is more natural; see Section~\ref{sec:limits}).
-Consistency is 1.000 across all modes because surrogates are
-deterministically cached per \code{(mode, family, canonical, label)}.
+Hybrid PPL (69.9) is lower than faker (84.0, $-16.8\%$) under the
+multilingual \xglm{} evaluator, and length preservation is the best
+of the three modes (0.982 vs.\ 0.976, 0.979). Redact's PPL (39.4)
+is the lowest of the three numerically, but this is not because
+the redacted text is more natural---\xglm{} simply scores the
+\code{[LABEL]} placeholder as a single out-of-distribution token
+without further compositional structure to evaluate; we discuss this
+caveat in \cref{sec:limits}. Consistency is 1.000 across all modes
+because surrogates are deterministically cached per \code{(mode,
+family, canonical, label)}.
 
 \paragraph{Privacy floor.}
-The leak rate of 0.226 is \emph{identical} across all three modes:
+The leak rate of 0.249 is \emph{identical} across all three modes:
 every mode misses the same ground-truth values, consistent with the
 detection-side recall ($\approx 0.627$) we measured for the privacy
 filter on the same data (Section~\ref{sec:related}). The
@@ -456,19 +492,25 @@ privacy at all---only \emph{what to do} with the spans the filter
 catches.
 
 \paragraph{Per-locale (PPL).}
-Hybrid is the PPL winner over faker in \textbf{all six locales}:
-en\_US (42.2 vs.\ 46.4), en\_IN (38.5 vs.\ 44.5),
-de\_DE (47.6 vs.\ 51.3), es\_MX (32.6 vs.\ 35.6),
-ja\_JP (44.1 vs.\ 49.7), zh\_CN (55.3 vs.\ 59.9). The English-only
-\disgpt{} proxy systematically penalises non-Latin script outputs, so
-the \emph{true} multilingual naturalness gap is likely larger than
-these numbers suggest.
+Hybrid is the \xglm{}-PPL winner over faker in \textbf{all six locales}:
+en\_US (66.1 vs.\ 80.7, $-18.1\%$), en\_IN (74.4 vs.\ 83.4, $-10.8\%$),
+de\_DE (79.3 vs.\ 92.5, $-14.3\%$),
+es\_MX (81.1 vs.\ 101.0, $-19.7\%$),
+ja\_JP (55.8 vs.\ 82.4, $-32.3\%$),
+zh\_CN (68.3 vs.\ 78.9, $-13.4\%$). Because \xglm{} is multilingual,
+the gap is no longer dominated by tokenisation artefacts, and the
+ja\_JP / zh\_CN advantages---where the SLM produces script-correct
+surrogates that the LM can score in-distribution---are now visible
+rather than hidden.
 
 \paragraph{Per-locale (length preservation).}
-Hybrid is the length-preservation winner over faker in \textbf{five of
-six locales} (de\_DE 0.984 vs.\ 0.975, en\_IN 0.982 vs.\ 0.972, es\_MX
-0.986 vs.\ 0.980, zh\_CN 0.995 vs.\ 0.971, ja\_JP 0.974 vs.\ 0.976
-near-tie); only en\_US slightly favours faker (0.979 vs.\ 0.983).
+Hybrid is the length-preservation winner over faker in \textbf{four of
+six locales} (de\_DE 0.979 vs.\ 0.965, en\_IN 0.981 vs.\ 0.972,
+ja\_JP 0.972 vs.\ 0.964, zh\_CN 0.992 vs.\ 0.974); en\_US (0.983 vs.\
+0.985) and es\_MX (0.978 vs.\ 0.983) narrowly favour faker. The
+zh\_CN gap (+0.018) is the largest of any locale, reflecting the SLM's
+ability to produce length-matched Han-script addresses where faker's
+random selection from its zh\_CN pool varies more in length.
 
 % =====================================================================
 \subsection{Few-shot regurgitation: a prompting failure, not a quantization failure}
@@ -553,22 +595,24 @@ Japanese fake). A character-frequency-based classifier or an explicit
 \textbf{Mode} & \textbf{Detect} & \textbf{Surrogate}
 & \textbf{Splice + PPL} & \textbf{Total} \\
 \midrule
-redact  & $\sim$1.0 & 0.00       & $\sim$0.2 & 1.2  \\
-faker   & $\sim$1.0 & $<$0.01    & $\sim$0.2 & 1.2  \\
-hybrid  & $\sim$1.0 & $\sim$34.7 & $\sim$0.2 & 35.9 \\
+redact  & $\sim$1.7 & 0.00       & $<$0.1 & 1.7  \\
+faker   & $\sim$1.6 & $<$0.01    & $<$0.1 & 1.6  \\
+hybrid  & $\sim$1.5 & $\sim$39.8 & $<$0.1 & 41.2 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The 30$\times$ latency gap between hybrid and redact / faker is
+The 24$\times$ latency gap between hybrid and redact / faker is
 dominated by \bonsai{} surrogate generation. Without our
 \code{(canonical, label)} cache, hybrid would call \bonsai{} for every
-PII mention ($\sim$660 calls across the corpus); with the cache, only
-\textbf{509 unique calls} were made, saving $\sim$25\% of inference
-time. Each \bonsai{} call costs $\sim$7--10\,s for the $\sim$30-token
-output (loading + 1.7\,B model inference + cleanup). Detection cost is
-identical across modes because the privacy filter is invoked both for
-input PII detection and for residual-leak measurement.
+PII mention ($\sim$660 calls across the 100-document corpus); with the
+cache, only \textbf{482 unique calls} were made (482/482 succeeded,
+0 echoed-or-empty, 0 errored under the locale-conditioned prompting
+strategy), saving $\sim$27\% of inference time. Each \bonsai{} call
+costs $\sim$7--10\,s for the $\sim$30-token output (loading + 1.7\,B
+model inference + cleanup). Detection cost is identical across modes
+because the privacy filter is invoked both for input PII detection and
+for residual-leak measurement.
 
 % =====================================================================
 \subsection{Downstream NER utility}
@@ -577,23 +621,35 @@ input PII detection and for residual-leak measurement.
 \paragraph{Setup.}
 We test whether substitution preserves \emph{downstream training
 utility}: an NER model trained on substituted data should approach the
-F1 of one trained on original data. We use the 58 English-locale
-documents from the evaluation set (en\_US + en\_IN), stratified-split
-47 train / 11 test by locale. The test set is \textbf{always in
-original form}---substitution applies only to the training set. PII
-spans are extracted from the ground-truth \code{pii\_gt} dictionary
-(substring search) so that substitution quality is decoupled from
-detection quality. A blank \spacy{} English NER pipeline is trained
-for 30 iterations with a single binary \code{PII} label on each
-variant of the train set, then evaluated against held-out original
-spans (label-agnostic span overlap).
+F1 of one trained on original data. From the 2000-document corpus
+(\cref{sec:setup}) we draw the English-locale subset (1159 documents,
+en\_US + en\_IN). We run the experiment at two scales: a
+\textbf{large-scale} 400 train / 100 test split for \code{original},
+\code{redact}, and \code{faker}, and a \textbf{matched-subset} 160
+train / 40 test split for all four modes including \code{hybrid}.
+The two-scale design lets us report the high-statistical-power
+comparison between the three cheap modes at the larger scale, while
+keeping the (CPU-bound) \bonsai{} surrogate generation tractable for
+the four-way comparison at the smaller scale; both scales share the
+same stratified-by-locale split methodology. The test set is
+\textbf{always in original form}---substitution applies only to the
+training set. PII spans are extracted from the ground-truth
+\code{pii\_gt} dictionary (substring search) so that substitution
+quality is decoupled from detection quality. A blank \spacy{} English
+NER pipeline is trained for 30 iterations with a single binary
+\code{PII} label on each variant of the train set, then evaluated
+against held-out original spans (label-agnostic span overlap).
 
 \begin{table}[t]
 \centering
-\caption{Span-level NER F1 on held-out original documents (47 train /
-11 test). Mean $\pm$ SD across 5 spaCy training seeds; the
-substituted training corpus is fixed per mode, only spaCy gradient
-initialisation varies.}
+\caption{Span-level NER F1 on held-out original documents. Mean
+$\pm$ SD across 5 spaCy training seeds; the substituted training
+corpus is fixed per mode, only spaCy gradient initialisation varies.
+\textbf{Top:} large-scale 400 train / 100 test, three modes.
+\textbf{Bottom:} matched 160 train / 40 test subset including the
+\code{hybrid} mode, which requires \bonsai{} surrogate generation
+and is therefore evaluated at the smaller scale to keep wall-clock
+manageable on CPU.}
 \label{tab:ner}
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{l r c c c r}
@@ -601,10 +657,16 @@ initialisation varies.}
 \textbf{Mode} & \textbf{Train spans} & \textbf{Precision} & \textbf{Recall}
 & \textbf{F1} & \textbf{$\Delta$F1 vs.\ orig.} \\
 \midrule
-original & 283 & 0.830\,$\pm$\,0.033 & 0.653\,$\pm$\,0.090 & \textbf{0.726\,$\pm$\,0.046} & (baseline) \\
-redact   & 283 & 0.000\,$\pm$\,0.000 & 0.000\,$\pm$\,0.000 & \textbf{0.000\,$\pm$\,0.000} & $-0.726$    \\
-faker    & 283 & 0.843\,$\pm$\,0.042 & 0.310\,$\pm$\,0.071 & \textbf{0.448\,$\pm$\,0.082} & $-0.278$    \\
-hybrid   & 283 & 0.835\,$\pm$\,0.061 & 0.240\,$\pm$\,0.039 & \textbf{0.371\,$\pm$\,0.049} & $-0.355$    \\
+\multicolumn{6}{l}{\emph{Large-scale (400 train / 100 test):}} \\
+original & 2592 & 0.947\,$\pm$\,0.006 & 0.974\,$\pm$\,0.012 & \textbf{0.960\,$\pm$\,0.004} & (baseline) \\
+redact   & 2592 & 0.000\,$\pm$\,0.000 & 0.000\,$\pm$\,0.000 & \textbf{0.000\,$\pm$\,0.000} & $-0.960$    \\
+faker    & 2592 & 0.984\,$\pm$\,0.008 & 0.493\,$\pm$\,0.038 & \textbf{0.656\,$\pm$\,0.033} & $-0.304$    \\
+\midrule
+\multicolumn{6}{l}{\emph{Matched subset (160 train / 40 test):}} \\
+original & 1046 & 0.895\,$\pm$\,0.006 & 0.923\,$\pm$\,0.004 & \textbf{0.908\,$\pm$\,0.003} & (baseline) \\
+redact   & 1046 & 0.000\,$\pm$\,0.000 & 0.000\,$\pm$\,0.000 & \textbf{0.000\,$\pm$\,0.000} & $-0.908$ \\
+faker    & 1046 & 0.955\,$\pm$\,0.017 & 0.347\,$\pm$\,0.052 & \textbf{0.506\,$\pm$\,0.056} & $-0.402$ \\
+hybrid   & 1046 & 0.909\,$\pm$\,0.015 & 0.215\,$\pm$\,0.033 & \textbf{0.346\,$\pm$\,0.044} & $-0.562$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -623,45 +685,51 @@ original F1.}
 Type-preserving fakes---whether random (faker) or SLM-generated
 locale-conditioned (hybrid)---give the model enough surface variety to
 learn that ``capitalised proper-noun-shaped two-token sequence in a
-name field'' is a PII span. Faker recovers
-$0.448 / 0.726 = 61.7\%$ of the original baseline; hybrid recovers
-$0.371 / 0.726 = 51.1\%$. Precision is high in both cases (0.83--0.84)
-but recall is only 0.24--0.31---fake-data-trained models are
-conservative.
+name field'' is a PII span. At the large scale (400 train / 100 test),
+faker recovers $0.656 / 0.960 = 68.3\%$ of the original baseline;
+precision is high (0.984\,$\pm$\,0.008) and recall is moderate
+(0.493\,$\pm$\,0.038)---fake-data-trained models are conservative,
+preferring to miss spans rather than hallucinate them. The
+seed-to-seed standard deviation on faker F1 is tight at 0.033,
+putting all between-mode comparisons solidly above the noise floor.
 
-\paragraph{Hybrid is plausibly slightly below faker, but the gap is
-within seed-level noise.}
-The mean F1 difference is $0.448 - 0.371 = 0.077$ in faker's favour.
-A Welch's two-sample $t$-test (with $n_{\textrm{f}}=n_{\textrm{h}}=5$ and
-unequal variances) gives standard error
-$\mathrm{SE} = \sqrt{0.082^2/5 + 0.049^2/5} = 0.0427$,
-$t = 0.077 / 0.0427 = 1.80$, Welch--Satterthwaite degrees of freedom
-$\approx 6.5$, and two-tailed $p \approx 0.12$---not significant at
-$p<0.05$. By contrast, the gaps between \texttt{original} and either
-substituted mode, and between any substituted mode and \texttt{redact},
-are multiple SDs apart and clearly significant.
+\paragraph{The hybrid--faker comparison at the matched scale: the
+gap is now real, not noise.}
+On the matched 160 train / 40 test subset---where all four modes
+share the same train/test docs and all 1046 training PII spans---we
+observe hybrid F1 $= 0.346 \pm 0.044$ versus faker F1 $= 0.506 \pm
+0.056$, a gap of \textbf{$-0.160$} in faker's favour. Under Welch's
+two-sample $t$-test ($n_{\text{f}}=n_{\text{h}}=5$, unequal variances)
+this gives standard error $\mathrm{SE} = \sqrt{0.056^2/5 + 0.044^2/5}
+= 0.032$, $t = 5.02$, Welch--Satterthwaite degrees of freedom $\approx
+7.6$, and a two-tailed $p < 0.001$. The gap is well outside
+seed-level noise.
 
-A pilot run with the naive fixed-three-demonstration strategy from
-Section~\ref{sec:regurgitation} (single seed) produced hybrid F1 = 0.310
-vs.\ faker F1 = 0.427---a gap of $-0.117$, larger than what we now
-observe under the locale-conditioned strategy ($-0.077$ in mean).
-Locale-conditioned rotating demonstrations therefore visibly *reduce*,
-even if they do not fully eliminate, the residual hybrid-below-faker
-trend within our small-sample regime.
+This is an honest negative finding for the central hybrid-vs-faker
+comparison on \emph{downstream NER training utility}, even though
+hybrid wins on every other metric we measure: hybrid PPL beats faker
+under \xglm{} in all six locales (\cref{tab:primary}) and length
+preservation is best-of-three in four locales. The interpretation is
+that locale-conditioned, contextually-realistic surrogates produce
+more natural-looking output text but a \emph{less varied} surface
+distribution than faker's i.i.d.\ random surrogates---and downstream
+NER training benefits more from variety than from naturalness. We
+revisit this tradeoff in \cref{sec:limits} and leave open the
+question of whether a less greedy SLM sampling strategy (higher
+temperature, or stochastic demonstration sampling without
+deterministic hash seeding) would close the gap.
 
-\paragraph{Variance, sample size, and what the seeds reveal.}
-Compared with the baseline F1 noise (original SD $=0.046$), faker
-exhibits the highest seed-to-seed variance (SD $=0.082$); hybrid is
-\emph{tighter} than faker (SD $=0.049$). One interpretation is that
-faker's i.i.d.\ random surrogates create a more lottery-like training
-distribution---some seeds happen to land on lucky vocabulary, others
-do not---whereas hybrid's locale-clustered surrogates produce a more
-predictable training corpus. Distinguishing this hypothesis from
-mere $n=5$ chance would require either a larger held-out test set or
-nested cross-validation; both are outside the scope of this short
-paper. The robust within-seed ordering---\code{original} $>$ \code{faker}
-$\gtrsim$ \code{hybrid} $\gg$ \code{redact}---holds for every seed we
-ran (5/5).
+A pilot run with the naive fixed-three-demonstration strategy
+(\cref{sec:regurgitation}, single seed) produced hybrid F1 = 0.310 vs.\
+faker F1 = 0.427---a gap of $-0.117$. The matched 160/40 gap is
+$-0.160$, which is \emph{larger}, not smaller, than that pilot. We
+read this as: locale-conditioned prompting eliminates the qualitative
+demonstration-regurgitation failure (482/482 unique \bonsai{} calls
+succeed; \cref{sec:regurgitation}), but the resulting in-distribution
+surrogates still yield less downstream training variety than faker's
+random ones. Prompting fixes the \emph{output} of the SLM; it does not
+turn that SLM's output into a better training-data generator than
+\faker{} for this particular task.
 
 % =====================================================================
 \section{Discussion and Limitations}
@@ -690,11 +758,16 @@ default practice for any small-LM substitution pipeline.
 distinct entities by surface-form grouping. A proper coreference layer
 would further improve consistency.
 
-\paragraph{Naturalness via \disgpt{} PPL.}
-\disgpt{}~\cite{distilgpt2} is a weak naturalness proxy: it favours
-short placeholder tokens (which redact mode produces) over longer
-realistic surrogates, and is English-only. A proper human evaluation,
-or PPL under a larger multilingual LM, would refine this measurement.
+\paragraph{Naturalness via \xglm{} PPL.}
+We use \xglm{}~\cite{xglm}, a 564\,M-parameter multilingual causal LM
+covering all six evaluation locales, as the naturalness proxy. PPL
+under a generic LM remains a proxy: it rewards in-distribution
+surface form rather than literal naturalness, and it rewards short
+placeholder tokens (which \code{redact} mode produces) for being
+predictable as standalone tokens regardless of whether the
+surrounding text is grammatical. A human evaluation, or a more
+discriminative proxy such as a fluency classifier, would refine this
+measurement.
 
 \paragraph{No explicit threat model.}
 We measure literal-string leak, not inference attacks. A determined
@@ -703,15 +776,15 @@ potentially link surrogates back to originals. Differential-privacy
 guarantees on the substitution distribution are out of scope.
 
 \paragraph{Sample size and statistical reporting.}
-The downstream-NER experiment uses 47 train / 11 test documents and
-$n=5$ training seeds; we report mean $\pm$ SD per mode and apply
-Welch's $t$-test to the two-substituted-mode comparison. The
-\code{original} $>$ \code{faker, hybrid} $\gg$ \code{redact} ordering
-is multiple SDs apart for every comparison and significant at
-$p<0.001$; only the \code{faker} vs.\ \code{hybrid} gap sits inside
-the noise band ($p\approx 0.12$). A larger test set, nested cross-
-validation, or a more powerful significance test (paired-bootstrap
-over per-seed F1 differences) would tighten this last comparison.
+The downstream-NER experiment is run at two scales: a large-scale 400
+train / 100 test split for \code{original}, \code{redact}, and
+\code{faker}, and a matched 160 train / 40 test split that
+additionally includes \code{hybrid}. We report mean $\pm$ SD per mode
+across $n=5$ training seeds and apply Welch's $t$-test to the
+substituted-mode comparisons (\cref{tab:ner}). All pairwise
+comparisons are multiple SDs apart and resolve at $p<0.001$,
+including the \code{hybrid} vs.\ \code{faker} comparison at the
+matched scale (\cref{sec:ner}).
 
 % =====================================================================
 \section{Conclusion}
@@ -722,9 +795,9 @@ combining a token classifier (\openaipf{}), a 1-bit small language
 model (\bonsai{}, Q1\_0), and a rule-based generator (\faker{}). The
 architecture works as intended at the document level: privacy is
 preserved (within the privacy-filter's recall ceiling), surrogates are
-consistent across mentions, length preservation is best-of-three across
-five of six locales, and naturalness PPL beats faker-only baselines
-across all six locales.
+consistent across mentions, length preservation is best-of-three in
+4 of 6 locales, and naturalness PPL under a multilingual evaluator
+beats faker-only baselines across \emph{all six} locales.
 
 The most actionable contribution is methodological. We document a
 ``few-shot regurgitation'' failure mode in which a small SLM, prompted
@@ -733,55 +806,77 @@ input and emits one of the demonstration \emph{outputs} verbatim---and
 we show by direct comparison with 1.58-bit \ternary{} that this is a
 property of \emph{prompting} at small-LM scale, not of 1-bit
 quantization. A simple locale-conditioned rotating-demonstrations
-prompting strategy fixes it: the fixed pipeline produces
+prompting strategy fixes it: 482/482 unique \bonsai{} surrogate
+proposals succeed (no echoes, no errors) under this strategy, producing
 locale-correct, format-preserving surrogates
-(\cjk{杨娟}\,\arrowto\,\cjk{李伟}, M\"uller-Schulz\,\arrowto\,Anna Becker,
-\code{11-Jul-1998}\,\arrowto\,\code{05-Aug-2003}), eliminates the
-previously observed regression in downstream NER training F1, and adds
-$<50$\,ms per surrogate proposal.
+(\cjk{杨娟}\,\arrowto\,\cjk{李伟}, M\"uller-Schulz\,\arrowto\,Anna
+Becker, \code{11-Jul-1998}\,\arrowto\,\code{05-Aug-2003}); the fix
+adds $<50$\,ms per surrogate proposal.
 
 Substitution outperforms \code{[LABEL]}-style redaction by an enormous
-margin on downstream NER training utility (F1 0.371\,$\pm$\,0.049 vs.\
-0.000\,$\pm$\,0.000 across 5 seeds; the gap is many standard
-deviations, not a noise effect). Whether SLM-generated surrogates can
-\emph{exceed} random faker surrogates on downstream utility---rather
-than match them within seed-level noise---remains an open question for
-a longer evaluation with a larger test set or nested cross-validation,
-which we believe is the most direct way to push the hybrid--faker
-comparison out of the $p\!\approx\!0.12$ band we observe at $n=5$.
+margin on downstream NER training utility: at the large 400 train /
+100 test scale, faker recovers F1$=$0.656\,$\pm$\,0.033 against
+redact's 0.000\,$\pm$\,0.000 (a gap of many standard deviations, not
+a noise effect).
 
-All code, configurations, and the 100-document evaluation harness are
-released under an open license.
+Our negative finding for hybrid is the second methodological
+contribution. At the matched 160/40 scale, faker (F1$=$0.506) clearly
+beats hybrid (F1$=$0.346) at $p<0.001$, despite hybrid winning every
+other metric (PPL, length preservation, locale-fidelity of generated
+strings). The implication: \emph{natural-looking} substitution and
+\emph{useful-for-training} substitution are different objectives. SLM
+surrogates collapse to a narrower in-distribution surface than faker's
+i.i.d.\ random outputs, and downstream NER training benefits more from
+the variety than from the naturalness. We caution future work against
+treating ``hybrid beats faker on PPL'' as a proxy for downstream
+utility---they are not the same metric.
+
+All code, configurations, and the 2000-document generated evaluation
+corpus are released under an open license.
 
 % =====================================================================
 \section*{Reproducibility}
 \label{sec:repro}
 
-Code, configurations, and the 100-document evaluation set
-(\code{samples.json}, the synthetic multi-template benchmark shipped
-with the \openaipf{} inference harness) used in this paper are
-released at\\
-\url{https://github.com/asadani/on-device-pii-substitution}. To
-reproduce the primary results:
+All code and the 2000-document generated evaluation set
+(\code{data/samples\_2000.json}, produced by the \openaipf{}
+template engine at \texttt{seed=42}) are released
+at:%
+\begin{center}
+\url{https://github.com/asadani/on-device-pii-substitution}
+\end{center}
+To reproduce the primary results:
 
 \begin{lstlisting}
-# Primary metrics (Table 1, ~60 minutes on CPU)
+# Primary metrics (Table 1, ~3 hours on CPU)
 python eval_substitution.py --n 100 --modes redact faker hybrid \
-       --bonsai-size 1.7B --output results/
+       --samples-path data/samples_2000.json \
+       --bonsai-size 1.7B --output results/run_v3
 
 # Per-locale and per-template breakdowns
 python analyze_results.py \
-       --results results/substitution_results.json \
-       --out results/analysis.md
+       --results results/run_v3/substitution_results.json \
+       --out results/run_v3/analysis.md
 
-# Downstream NER utility (Table 2, ~25 minutes)
-python eval_ner_utility.py --output results/
+# Downstream NER utility -- large scale, 3 modes (Table 2 top, ~2.5 h)
+python eval_ner_utility.py \
+       --samples-path data/samples_2000.json \
+       --modes original redact faker --n-max 500 \
+       --output results/ner_v3
+
+# Downstream NER utility -- matched 4-mode subset (Table 2 bottom, ~1.5 h)
+python eval_ner_utility.py \
+       --samples-path data/samples_2000.json \
+       --modes original redact faker hybrid --n-max 200 \
+       --output results/ner_v3_matched
 \end{lstlisting}
 
-Total wall-clock for the full pipeline is approximately 90 minutes on
-a 31\,GB single-CPU machine. The privacy-filter model
-($\sim$2.8\,GB) is downloaded once from Hugging Face on first run and
-cached locally.
+Total wall-clock for the full pipeline is approximately 7--8 hours on
+a 31\,GB single-CPU machine, dominated by hybrid-mode \bonsai{}
+generation in both the primary and NER experiments. The
+privacy-filter model ($\sim$2.8\,GB) and the \xglm{} evaluator
+($\sim$1.1\,GB) are downloaded once from Hugging Face on first run
+and cached locally.
 
 % =====================================================================
 \section*{Use of generative AI assistance}

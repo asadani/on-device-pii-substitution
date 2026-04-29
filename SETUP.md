@@ -111,6 +111,6 @@ sudo apt-get install -y --no-install-recommends \
 * **`accelerate` import error** — `pip install accelerate>=1.0.0` (it is
   required by `transformers>=5.6` for `device_map="cpu"`).
 * **HF gated dataset error on `pii-masking-200k`** — we do *not* use that
-  dataset; the harness loads the local `samples.json` shipped with
-  openai-privacy-filter. If you see this error it means the loader path
-  is wrong; check `--samples` if you overrode the default.
+  dataset; the harness loads `data/samples.json` included in this repo.
+  If you see this error it means the loader path is wrong; check
+  `--samples` if you overrode the default.

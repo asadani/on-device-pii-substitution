@@ -253,9 +253,7 @@ def evaluate_ner(nlp, eval_pairs: list[tuple[str, list[Span]]]) -> dict:
 
 # ─── Data loading ─────────────────────────────────────────────────────────────
 
-DEFAULT_SAMPLES_PATH = Path(
-    "/home/anujsadani/gitrepo/asadani/openai-privacy-filter/samples.json"
-)
+DEFAULT_SAMPLES_PATH = Path(__file__).parent / "data" / "samples.json"
 
 
 def load_english_docs(path: Path = DEFAULT_SAMPLES_PATH, n_max: Optional[int] = None):
@@ -336,6 +334,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--n-max", type=int, default=None,
                     help="Max docs to load (default: all English docs in samples.json)")
+    ap.add_argument("--samples-path", type=Path, default=DEFAULT_SAMPLES_PATH,
+                    help="Path to samples JSON (default: data/samples.json)")
     ap.add_argument("--n-iter", type=int, default=30, help="spaCy training iterations")
     ap.add_argument("--verbose-train", action="store_true", help="Print training loss per epoch")
     ap.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2, 3, 4],
@@ -348,8 +348,8 @@ def main():
     ap.add_argument("--output", type=Path, default=Path("results"))
     args = ap.parse_args()
 
-    print("Loading English docs from samples.json...")
-    docs = load_english_docs(n_max=args.n_max)
+    print(f"Loading English docs from {args.samples_path}...")
+    docs = load_english_docs(path=args.samples_path, n_max=args.n_max)
     print(f"  Got {len(docs)} English docs (locales: {Counter(d['locale'] for d in docs)})")
     print(f"  GT spans per doc: avg={sum(len(d['gt_spans']) for d in docs)/len(docs):.1f}")
 

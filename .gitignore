@@ -21,6 +21,7 @@ venv/
 paper/main_local.*
 
 # Heavyweight dependencies (see SETUP.md for installation instructions)
+bonsai-demo
 bonsai-demo/
 
 # Hugging Face cache (downloaded models live here, ~3 GB total)
@@ -37,3 +38,6 @@ Thumbs.db
 *.swo
 .idea/
 .vscode/
+
+# Local Claude Code session state
+.claude/

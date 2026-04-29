@@ -71,7 +71,10 @@ class EntityRef:
 # ─── Detection (privacy-filter) ───────────────────────────────────────────────
 
 def _get_model():
-    """Lazy-load the privacy-filter tokenizer and model."""
+    """Lazy-load the privacy-filter tokenizer and model. Requires
+    transformers>=5.6.0 (see requirements.txt) for the custom
+    OpenAIPrivacyFilter architecture and TokenizersBackend tokenizer class.
+    """
     if "model" in _MODEL_CACHE:
         return _MODEL_CACHE["tokenizer"], _MODEL_CACHE["model"]
     import torch

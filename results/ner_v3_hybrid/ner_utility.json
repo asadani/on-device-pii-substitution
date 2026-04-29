@@ -1,0 +1,87 @@
+{
+  "generated_at": "2026-04-29T11:20:05Z",
+  "n_train": 160,
+  "n_test": 40,
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "results": [
+    {
+      "mode": "hybrid",
+      "n_train_docs": 160,
+      "n_test_docs": 40,
+      "n_train_spans": 1046,
+      "n_seeds": 5,
+      "f1_mean": 0.3461126101726394,
+      "f1_std": 0.044050714595477256,
+      "precision_mean": 0.9087803272467778,
+      "precision_std": 0.014991100836666021,
+      "recall_mean": 0.2147007326855602,
+      "recall_std": 0.03282429341557174,
+      "per_seed": [
+        {
+          "mode": "hybrid",
+          "seed": 0,
+          "precision": 0.9038461538461539,
+          "recall": 0.1934156378600823,
+          "f1": 0.3186440677966102,
+          "tp": 47,
+          "fp": 5,
+          "fn": 196,
+          "train_seconds": 131.31758148799418
+        },
+        {
+          "mode": "hybrid",
+          "seed": 1,
+          "precision": 0.9375,
+          "recall": 0.24691358024691357,
+          "f1": 0.3908794788273615,
+          "tp": 60,
+          "fp": 4,
+          "fn": 183,
+          "train_seconds": 120.39031847799197
+        },
+        {
+          "mode": "hybrid",
+          "seed": 2,
+          "precision": 0.9016393442622951,
+          "recall": 0.22821576763485477,
+          "f1": 0.36423841059602646,
+          "tp": 55,
+          "fp": 6,
+          "fn": 186,
+          "train_seconds": 115.6768449950032
+        },
+        {
+          "mode": "hybrid",
+          "seed": 3,
+          "precision": 0.8939393939393939,
+          "recall": 0.24380165289256198,
+          "f1": 0.3831168831168831,
+          "tp": 59,
+          "fp": 7,
+          "fn": 183,
+          "train_seconds": 111.20259502000408
+        },
+        {
+          "mode": "hybrid",
+          "seed": 4,
+          "precision": 0.9069767441860465,
+          "recall": 0.16115702479338842,
+          "f1": 0.2736842105263158,
+          "tp": 39,
+          "fp": 4,
+          "fn": 203,
+          "train_seconds": 117.33936733502196
+        }
+      ],
+      "bonsai_attempted": 416,
+      "bonsai_succeeded": 416,
+      "bonsai_echoed": 0
+    }
+  ]
+}

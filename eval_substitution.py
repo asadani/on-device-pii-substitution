@@ -4,7 +4,8 @@ Loads N documents from ai4privacy/pii-masking-200k, runs each through three
 modes (redact, faker, hybrid), and reports:
 
     1. Residual leak rate    — re-run privacy-filter on output; count flagged spans.
-    2. Naturalness PPL       — perplexity under distilgpt2 on output text.
+    2. Naturalness PPL       — perplexity under facebook/xglm-564M (multilingual
+                                causal LM covering en/de/es/zh/ja) on output text.
     3. Consistency rate      — for entities mentioned ≥2× in input, fraction where
                                 output uses one consistent surrogate.
     4. Length preservation   — 1 - |len(out) - len(in)| / len(in).
@@ -55,8 +56,13 @@ class DocResult:
 
 
 # ─── Naturalness (perplexity) ─────────────────────────────────────────────────
+# We use facebook/xglm-564M, a 564M-param multilingual causal LM trained on
+# 30 languages including all six locales evaluated here (en, de, es, zh, ja).
+# This replaces distilgpt2 (English-only, ~82M) which systematically penalised
+# non-Latin script outputs and made cross-locale PPL comparisons unreliable.
 
 _PPL_MODEL_CACHE: dict = {}
+_PPL_MODEL_NAME = "facebook/xglm-564M"
 
 
 def _get_ppl_model():
@@ -64,8 +70,10 @@ def _get_ppl_model():
         return _PPL_MODEL_CACHE["tokenizer"], _PPL_MODEL_CACHE["model"]
     import torch
     from transformers import AutoTokenizer, AutoModelForCausalLM
-    tok = AutoTokenizer.from_pretrained("distilgpt2")
-    mdl = AutoModelForCausalLM.from_pretrained("distilgpt2")
+    # use_fast=False — xglm ships only a SentencePiece tokenizer; the fast
+    # converter tries Tiktoken first and fails. The slow tokenizer is fine.
+    tok = AutoTokenizer.from_pretrained(_PPL_MODEL_NAME, use_fast=False)
+    mdl = AutoModelForCausalLM.from_pretrained(_PPL_MODEL_NAME)
     mdl.eval()
     _PPL_MODEL_CACHE["tokenizer"] = tok
     _PPL_MODEL_CACHE["model"] = mdl
@@ -73,7 +81,7 @@ def _get_ppl_model():
 
 
 def perplexity(text: str, max_chunk_tokens: int = 1024) -> float:
-    """Compute perplexity of text under distilgpt2.
+    """Compute perplexity of text under the multilingual evaluator (xglm-564M).
 
     Chunks long texts and averages NLL across chunks (token-weighted).
     """
@@ -290,9 +298,7 @@ def save_results(results: list[DocResult], summary: dict, out_dir: Path,
 
 # ─── Dataset loader ───────────────────────────────────────────────────────────
 
-DEFAULT_SAMPLES_PATH = Path(
-    "/home/anujsadani/gitrepo/asadani/openai-privacy-filter/samples.json"
-)
+DEFAULT_SAMPLES_PATH = Path(__file__).parent / "data" / "samples.json"
 
 
 def load_samples(n: int = 100, samples_path: Path = DEFAULT_SAMPLES_PATH):
@@ -322,6 +328,8 @@ def load_samples(n: int = 100, samples_path: Path = DEFAULT_SAMPLES_PATH):
 def main():
     parser = argparse.ArgumentParser(description="Evaluate PII substitution modes")
     parser.add_argument("--n", type=int, default=100, help="Number of documents")
+    parser.add_argument("--samples-path", type=Path, default=DEFAULT_SAMPLES_PATH,
+                        help="Path to samples JSON (default: data/samples.json)")
     parser.add_argument("--modes", nargs="+", default=["redact", "faker", "hybrid"],
                         choices=["redact", "faker", "hybrid"])
     parser.add_argument("--bonsai-size", choices=["1.7B", "4B", "8B"], default="1.7B")
@@ -331,8 +339,8 @@ def main():
                         help="Include full input/output text in JSON (default: omit to keep file small)")
     args = parser.parse_args()
 
-    print(f"Loading {args.n} docs from local samples.json...")
-    docs = load_samples(n=args.n)
+    print(f"Loading {args.n} docs from {args.samples_path}...")
+    docs = load_samples(n=args.n, samples_path=args.samples_path)
     types = sorted(set(d["metadata"].get("type", "?") for d in docs))
     locales = sorted(set(d["metadata"].get("locale", "?") for d in docs))
     print(f"  Got {len(docs)} docs (types: {types}, locales: {locales}).\n")
