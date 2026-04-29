@@ -298,17 +298,17 @@ def save_results(results: list[DocResult], summary: dict, out_dir: Path,
 
 # ─── Dataset loader ───────────────────────────────────────────────────────────
 
-DEFAULT_SAMPLES_PATH = Path(__file__).parent / "data" / "samples.json"
+DEFAULT_SAMPLES_PATH = Path(__file__).parent / "data" / "samples_2000.json"
 
 
 def load_samples(n: int = 100, samples_path: Path = DEFAULT_SAMPLES_PATH):
     """Load N samples from a local JSON file with ground-truth PII labels.
 
-    The samples.json shipped with openai-privacy-filter has 100 docs across
-    7 templates (W2, 1099, invoice, paystub, bank_statement, auto_insurance,
-    mortgage_insurance) and 6 locales (en_US, en_IN, de_DE, es_MX, ja_JP, zh_CN).
-    Each doc has 'text', 'pii_gt' (ground-truth PII values), 'non_pii_data', and
-    'metadata' fields.
+    The bundled data/samples_2000.json has 2000 docs across 7 templates (W2,
+    1099, invoice, paystub, bank_statement, auto_insurance, mortgage_insurance)
+    and 6 locales (en_US, en_IN, de_DE, es_MX, ja_JP, zh_CN), produced by the
+    openai/privacy-filter generator at seed=42. Each doc has 'text', 'pii_gt'
+    (ground-truth PII values), 'non_pii_data', and 'metadata' fields.
     """
     with open(samples_path, encoding="utf-8") as f:
         records = json.load(f)
@@ -329,7 +329,7 @@ def main():
     parser = argparse.ArgumentParser(description="Evaluate PII substitution modes")
     parser.add_argument("--n", type=int, default=100, help="Number of documents")
     parser.add_argument("--samples-path", type=Path, default=DEFAULT_SAMPLES_PATH,
-                        help="Path to samples JSON (default: data/samples.json)")
+                        help="Path to samples JSON (default: data/samples_2000.json)")
     parser.add_argument("--modes", nargs="+", default=["redact", "faker", "hybrid"],
                         choices=["redact", "faker", "hybrid"])
     parser.add_argument("--bonsai-size", choices=["1.7B", "4B", "8B"], default="1.7B")

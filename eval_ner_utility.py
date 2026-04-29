@@ -4,10 +4,11 @@ Question: does training a NER model on PII-substituted documents preserve the
 F1 it would achieve if trained on the original documents?
 
 Setup:
-  - English subset of the openai-privacy-filter samples.json (~42 docs).
-  - Stratified 80/20 split → ~33 train, ~9 test (test docs are ALWAYS
-    in their original form; the substitution affects only training data).
-  - Ground-truth PII spans are derived from samples.json's `pii_gt` dict by
+  - English subset of the bundled samples JSON (default:
+    data/samples_2000.json; ~1159 English docs out of 2000 total).
+  - Stratified 80/20 split by locale (test docs are ALWAYS in their
+    original form; the substitution affects only training data).
+  - Ground-truth PII spans are derived from each doc's `pii_gt` dict by
     locating each value as a substring in the source text.
   - Single binary "PII" label (multiclass would need more data).
   - For each mode (original / redact / faker / hybrid), we substitute the
@@ -47,7 +48,7 @@ PII_LABEL = "PII"  # Single binary label across all 8 PII types
 # ─── Ground-truth span extraction ─────────────────────────────────────────────
 
 def _gt_value_to_label(key: str) -> str:
-    """Map samples.json pii_gt key to one of the 8 privacy-filter labels."""
+    """Map a pii_gt dict key to one of the 8 privacy-filter labels."""
     k = key.lower()
     if any(t in k for t in ("name", "agent_name", "officer_name")):
         return LABEL_PERSON
@@ -68,7 +69,7 @@ def _gt_value_to_label(key: str) -> str:
 
 
 def gt_spans(text: str, pii_gt: dict) -> list[Span]:
-    """Convert samples.json pii_gt dict to char-level Spans by substring search.
+    """Convert a pii_gt dict to char-level Spans by substring search.
 
     Some GT values are lists (e.g., multiple VINs) — handle both shapes.
     """
@@ -253,11 +254,11 @@ def evaluate_ner(nlp, eval_pairs: list[tuple[str, list[Span]]]) -> dict:
 
 # ─── Data loading ─────────────────────────────────────────────────────────────
 
-DEFAULT_SAMPLES_PATH = Path(__file__).parent / "data" / "samples.json"
+DEFAULT_SAMPLES_PATH = Path(__file__).parent / "data" / "samples_2000.json"
 
 
 def load_english_docs(path: Path = DEFAULT_SAMPLES_PATH, n_max: Optional[int] = None):
-    """Load English-locale docs from samples.json with their pii_gt and gt_spans."""
+    """Load English-locale docs from the samples JSON with their pii_gt and gt_spans."""
     records = json.load(open(path))
     docs = []
     for r in records:
@@ -333,9 +334,9 @@ class NerResult:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--n-max", type=int, default=None,
-                    help="Max docs to load (default: all English docs in samples.json)")
+                    help="Max docs to load (default: all English docs in samples_2000.json)")
     ap.add_argument("--samples-path", type=Path, default=DEFAULT_SAMPLES_PATH,
-                    help="Path to samples JSON (default: data/samples.json)")
+                    help="Path to samples JSON (default: data/samples_2000.json)")
     ap.add_argument("--n-iter", type=int, default=30, help="spaCy training iterations")
     ap.add_argument("--verbose-train", action="store_true", help="Print training loss per epoch")
     ap.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2, 3, 4],

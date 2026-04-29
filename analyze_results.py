@@ -72,10 +72,10 @@ def extract_hybrid_surrogates(results_with_text):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--results", type=Path, default=Path("results/substitution_results.json"))
+    ap.add_argument("--results", type=Path, default=Path("results/run_v3/substitution_results.json"))
     ap.add_argument("--samples", type=Path,
-                    default=Path("/home/anujsadani/gitrepo/asadani/openai-privacy-filter/samples.json"))
-    ap.add_argument("--out", type=Path, default=Path("results/analysis.md"))
+                    default=Path(__file__).parent / "data" / "samples_2000.json")
+    ap.add_argument("--out", type=Path, default=Path("results/run_v3/analysis.md"))
     args = ap.parse_args()
 
     payload = json.load(open(args.results))
