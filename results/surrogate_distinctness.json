@@ -1,0 +1,340 @@
+{
+  "n_train_docs": 160,
+  "n_max_loaded": 200,
+  "modes": {
+    "faker": {
+      "elapsed_s": 0.2,
+      "per_label": {
+        "account_number": {
+          "n_total_mentions": 278,
+          "n_unique_surrogates": 61,
+          "type_token_ratio": 0.2194,
+          "top5_most_repeated": [
+            [
+              "66048764",
+              47
+            ],
+            [
+              "660487647",
+              38
+            ],
+            [
+              "47593824",
+              17
+            ],
+            [
+              "59387784",
+              15
+            ],
+            [
+              "1858398947",
+              14
+            ]
+          ]
+        },
+        "private_person": {
+          "n_total_mentions": 274,
+          "n_unique_surrogates": 31,
+          "type_token_ratio": 0.1131,
+          "top5_most_repeated": [
+            [
+              "Norma Fisher",
+              53
+            ],
+            [
+              "Heather Snow",
+              45
+            ],
+            [
+              "Steven Robinson",
+              32
+            ],
+            [
+              "Jorge Sullivan",
+              24
+            ],
+            [
+              "Robert Stewart",
+              23
+            ]
+          ]
+        },
+        "private_address": {
+          "n_total_mentions": 162,
+          "n_unique_surrogates": 18,
+          "type_token_ratio": 0.1111,
+          "top5_most_repeated": [
+            [
+              "2194 Kyle Stream, Port Gabriellafort, OH 13700",
+              36
+            ],
+            [
+              "94892 Garcia Cliffs, Thomasville, MI 57408",
+              24
+            ],
+            [
+              "4759 William Haven Apt. 194, West Corey, CA 90152",
+              18
+            ],
+            [
+              "489 Kyle Stream, Port Gabriellafort, OH 13700",
+              16
+            ],
+            [
+              "3513 John Divide Suite 115, Rodriguezside, LA 93111",
+              14
+            ]
+          ]
+        },
+        "private_date": {
+          "n_total_mentions": 20,
+          "n_unique_surrogates": 5,
+          "type_token_ratio": 0.25,
+          "top5_most_repeated": [
+            [
+              "1989-12-07",
+              13
+            ],
+            [
+              "1994-12-11",
+              3
+            ],
+            [
+              "1982-04-23",
+              2
+            ],
+            [
+              "2020-10-31",
+              1
+            ],
+            [
+              "2024-07-12",
+              1
+            ]
+          ]
+        },
+        "private_phone": {
+          "n_total_mentions": 211,
+          "n_unique_surrogates": 29,
+          "type_token_ratio": 0.1374,
+          "top5_most_repeated": [
+            [
+              "(460)648-7647x5938",
+              34
+            ],
+            [
+              "278-215-6593x87784",
+              29
+            ],
+            [
+              "(265)393-8778x408",
+              22
+            ],
+            [
+              "342.332.0947",
+              22
+            ],
+            [
+              "711.558.7148x418",
+              14
+            ]
+          ]
+        },
+        "private_email": {
+          "n_total_mentions": 101,
+          "n_unique_surrogates": 16,
+          "type_token_ratio": 0.1584,
+          "top5_most_repeated": [
+            [
+              "katelynmontgomery@example.com",
+              24
+            ],
+            [
+              "ypage@example.net",
+              20
+            ],
+            [
+              "cortezraymond@example.net",
+              14
+            ],
+            [
+              "leeashley@example.org",
+              12
+            ],
+            [
+              "bryan80@example.org",
+              9
+            ]
+          ]
+        }
+      }
+    },
+    "hybrid": {
+      "elapsed_s": 3082.3,
+      "per_label": {
+        "account_number": {
+          "n_total_mentions": 278,
+          "n_unique_surrogates": 33,
+          "type_token_ratio": 0.1187,
+          "top5_most_repeated": [
+            [
+              "66048764",
+              74
+            ],
+            [
+              "660487647",
+              38
+            ],
+            [
+              "5781565938",
+              20
+            ],
+            [
+              "75938242",
+              19
+            ],
+            [
+              "892411578",
+              17
+            ]
+          ]
+        },
+        "private_person": {
+          "n_total_mentions": 274,
+          "n_unique_surrogates": 10,
+          "type_token_ratio": 0.0365,
+          "top5_most_repeated": [
+            [
+              "Jennifer Wong",
+              45
+            ],
+            [
+              "Linda Vasquez",
+              39
+            ],
+            [
+              "Michael O'Brien",
+              34
+            ],
+            [
+              "David Kim",
+              34
+            ],
+            [
+              "Priya Krishnamurthy",
+              32
+            ]
+          ]
+        },
+        "private_address": {
+          "n_total_mentions": 162,
+          "n_unique_surrogates": 6,
+          "type_token_ratio": 0.037,
+          "top5_most_repeated": [
+            [
+              "1500 Broadway, New York NY 10036",
+              36
+            ],
+            [
+              "123 Main Street, Boston MA 02101",
+              29
+            ],
+            [
+              "36/74 MG Road, Bangalore 560001",
+              29
+            ],
+            [
+              "550 Pine Avenue, Austin TX 78701",
+              28
+            ],
+            [
+              "21 Nehru Place, New Delhi 110019",
+              20
+            ]
+          ]
+        },
+        "private_date": {
+          "n_total_mentions": 20,
+          "n_unique_surrogates": 9,
+          "type_token_ratio": 0.45,
+          "top5_most_repeated": [
+            [
+              "1985",
+              7
+            ],
+            [
+              "1985-11-22",
+              3
+            ],
+            [
+              "06/30/1978",
+              3
+            ],
+            [
+              "07/04/1992",
+              2
+            ],
+            [
+              "18-Dec-1992",
+              1
+            ]
+          ]
+        },
+        "private_phone": {
+          "n_total_mentions": 211,
+          "n_unique_surrogates": 18,
+          "type_token_ratio": 0.0853,
+          "top5_most_repeated": [
+            [
+              "(460)648-7647x5938",
+              75
+            ],
+            [
+              "578.740.8016x0975",
+              38
+            ],
+            [
+              "459.638.2421x9489",
+              27
+            ],
+            [
+              "001-719-848-9241x15781",
+              16
+            ],
+            [
+              "001-933-328-7115",
+              10
+            ]
+          ]
+        },
+        "private_email": {
+          "n_total_mentions": 101,
+          "n_unique_surrogates": 8,
+          "type_token_ratio": 0.0792,
+          "top5_most_repeated": [
+            [
+              "katelynmontgomery@example.com",
+              44
+            ],
+            [
+              "blairrachel@example.net",
+              26
+            ],
+            [
+              "cheryl38@example.com",
+              14
+            ],
+            [
+              "kyleblair@example.net",
+              9
+            ],
+            [
+              "achang@example.org",
+              3
+            ]
+          ]
+        }
+      }
+    }
+  }
+}

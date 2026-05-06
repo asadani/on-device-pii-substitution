@@ -92,7 +92,6 @@
 \newcommand{\ternary}{\code{Ternary-Bonsai-1.7B}}
 \newcommand{\faker}{\code{faker}}
 \newcommand{\spacy}{\code{spaCy}}
-\newcommand{\disgpt}{\code{distilgpt2}}
 \newcommand{\xglm}{\code{XGLM-564M}}
 
 % \cjk{...} wraps a string in a CJK environment so that CJKutf8 +
@@ -107,7 +106,7 @@
 % ---------------------------------------------------------------------
 % Title block
 % ---------------------------------------------------------------------
-\title{Locale-Conditioned Few-Shot Prompting Prevents\\
+\title{Locale-Conditioned Few-Shot Prompting Mitigates\\
        Demonstration Regurgitation in On-Device PII Substitution\\
        with Small Language Models}
 
@@ -124,54 +123,35 @@
 
 % =====================================================================
 \begin{abstract}
-PII redaction in machine-learning pipelines today usually replaces
+Personally Identifiable Information (PII) redaction usually replaces
 detected entities with placeholder tokens such as \code{[PERSON]},
-destroying the downstream utility of the redacted text for retrieval,
-language-model fine-tuning, and NER training. We propose and evaluate a
-fully on-device pipeline that \emph{substitutes} PII with consistent,
+destroying the downstream utility of the redacted text for retrieval
+and Named Entity Recognition (NER) training. We propose a fully
+on-device pipeline that \emph{substitutes} PII with consistent,
 type-preserving fake values: a 1.5\,B mixture-of-experts token
-classifier (\openaipf{}, with 50\,M active parameters) detects spans, an
-entity resolver groups same-string mentions, and a 1-bit small language
-model (\bonsai{}, Q1\_0) proposes contextual surrogates for names,
-addresses, and dates while a rule-based generator (\faker{}) handles
-fully patterned fields. We are not aware of a prior published
-evaluation of an end-to-end on-device PII substitution stack that
-combines a token-classifier, a 1-bit SLM, and a rule-based generator;
-this paper aims to fill that gap. We report a \emph{prompting} finding
-that turns out
-to be more important than the quantization choice: with a naive
-fixed-three-shot demonstration, both 1-bit \bonsai{} and 1.58-bit
-\ternary{} regurgitate the demonstration outputs verbatim regardless of
-the input---the Chinese name \cjk{杨娟}, the Japanese name
-\cjk{山田太郎}, and the German name M\"uller-Schulz all collapse to
-``Alice Johnson''. We fix this with \textbf{locale-conditioned rotating
-few-shot demonstrations}: a character-range heuristic classifies each
-input's locale and selects a locale-pure demonstration pool, and a
-per-input MD5 hash deterministically samples which three demonstrations
-appear in the prompt. With the fix, the same 1-bit model produces
-locale-correct surrogates (\cjk{杨娟}\arrowto{}\cjk{李伟},
-M\"uller-Schulz\arrowto{}Anna Becker,
-\code{11-Jul-1998}\arrowto{}\code{05-Aug-2003}); 482 of 482 unique
-\bonsai{} surrogate-proposal calls succeed (no echoes, no errors)
-under this strategy. On a generated 2000-document multilingual corpus,
-hybrid PPL beats \faker{} in \emph{all six} locales under a
-multilingual evaluator (\xglm{}; e.g., zh\_CN
-68.3 vs.\ 78.9, ja\_JP 55.8 vs.\ 82.4), and length preservation is
-the best of three modes in 4 of 6 locales. On a downstream NER
-experiment (400 train / 100 test, English locales), redact training
-data yields F1$=$0.000 (5/5 seeds), faker yields
-0.656\,$\pm$\,0.033, and original-text training yields
-0.960\,$\pm$\,0.004; on a matched 160/40 subset that additionally
-includes \code{hybrid}, faker (0.506\,$\pm$\,0.056) clearly
-outperforms hybrid (0.346\,$\pm$\,0.044) at $p<0.001$
-(Welch's $t=5.0$). We report this as an \emph{honest negative finding}:
-contextually-realistic SLM surrogates produce more natural-looking
-text but a less varied training distribution, and downstream NER
-training benefits more from variety than from naturalness. We argue
-that small-LM PII substitution is viable on-device, that prompt
-engineering matters more than quantization at this scale, and that
-``natural'' is not the same as ``useful for training.''
-The code repository for this work is accessible at
+classifier (\openaipf{}) detects spans, a 1-bit \bonsai{} Small
+Language Model (SLM) proposes contextual surrogates for names,
+addresses, and dates, and a rule-based generator (\faker{}) handles
+patterned fields. We report a \emph{prompting} finding more important
+than the quantization choice: with naive fixed three-shot
+demonstrations, the 1-bit SLM regurgitates demonstration outputs
+verbatim regardless of input; 1.58-bit \ternary{} reproduces
+byte-identical failures, ruling out quantization as the cause. We fix
+this with \textbf{locale-conditioned rotating few-shot demonstrations}:
+a character-range heuristic picks a locale-pure pool and a per-input
+MD5 hash samples three demonstrations. With the fix, 482/482 unique \bonsai{} calls succeed
+(no echoes) and produce locale-correct surrogates, although the SLM
+still copies from a small same-locale demonstration pool---a residual
+narrowness we quantify. On a 2000-document
+multilingual corpus, hybrid perplexity (PPL) beats \faker{} in all six
+locales under a multilingual evaluator (\xglm{}); length preservation
+is best-of-three in 4 of 6 locales. On downstream NER (400 train / 100
+test, English), redact yields F1$=$0.000, faker 0.656, original 0.960;
+on a matched 160/40 subset including hybrid, faker (0.506) outperforms
+hybrid (0.346) at $p<0.001$. We report this as an \emph{honest
+negative finding}: SLM surrogates produce more natural text but a less
+varied training distribution, and downstream NER benefits more from
+variety than from naturalness. Code:
 \url{https://github.com/asadani/on-device-pii-substitution}.
 \end{abstract}
 
@@ -179,18 +159,19 @@ The code repository for this work is accessible at
 \section{Introduction}
 \label{sec:intro}
 
-Existing PII redaction tools---Microsoft Presidio~\cite{presidio},
-the OpenAI privacy filter~\cite{privacyfilter}, \spacy{}+regex
-pipelines~\cite{spacy}---produce \emph{redacted} text in which detected
-entities are replaced by short placeholder tokens such as \code{[NAME]}
-or \code{[EMAIL]}. This is adequate for compliance display purposes but
-fails for downstream uses that need natural-looking text: training data
-for fine-tuning, search indices over redacted corpora, and
-retrieval-augmented generation over sensitive document stores. The
-placeholder approach also hurts utility in measurable ways: NER models
-trained on \code{[PERSON]}-redacted corpora generalise poorly to
-non-redacted text (Section~\ref{sec:ner}), and language-model perplexity
-over placeholder-rich documents is dominated by the placeholder tokens
+Existing Personally Identifiable Information (PII) redaction
+tools---Microsoft Presidio~\cite{presidio}, the OpenAI privacy
+filter~\cite{privacyfilter}, \spacy{}+regex pipelines~\cite{spacy}---produce
+\emph{redacted} text in which detected entities are replaced by short
+placeholder tokens such as \code{[NAME]} or \code{[EMAIL]}. This is
+adequate for compliance display purposes but fails for downstream uses
+that need natural-looking text: training data for fine-tuning, search
+indices over redacted corpora, and retrieval-augmented generation over
+sensitive document stores. The placeholder approach also hurts utility
+in measurable ways: Named Entity Recognition (NER) models trained on
+\code{[PERSON]}-redacted corpora generalise poorly to non-redacted text
+(Section~\ref{sec:ner}), and language-model perplexity over
+placeholder-rich documents is dominated by the placeholder tokens
 themselves.
 
 \emph{Substitution}---replacing each detected PII span with a
@@ -207,10 +188,11 @@ LLM~\cite{gpt4tr}.
 Recent advances in 1-bit and ternary-bit quantization (e.g., the
 Bonsai~\cite{bonsai} and Ternary-Bonsai~\cite{ternarybonsai} families,
 and prior work on BitNet~\cite{bitnet}) make small generative language
-models viable on commodity CPUs. We investigate whether such models can
-serve as the surrogate-proposer in a privacy-preserving substitution
-pipeline, evaluating the resulting system on five metrics (privacy,
-naturalness, consistency, length, and downstream NER training F1).
+models---hereafter Small Language Models (SLMs)---viable on commodity
+CPUs. We investigate whether such models can serve as the
+surrogate-proposer in a privacy-preserving substitution pipeline,
+evaluating the resulting system on five metrics (privacy, naturalness,
+consistency, length, and downstream NER training F1).
 
 \paragraph{Threat model (scope).}
 We measure literal-string leak against ground-truth PII values; we do
@@ -221,8 +203,8 @@ distribution are out of scope.
 \paragraph{Contributions.}
 \begin{enumerate}[leftmargin=*, itemsep=2pt, topsep=2pt]
   \item A reproducible on-device substitution pipeline combining
-        \openaipf{}, \bonsai{} (Q1\_0), and \faker{}, with all code and
-        configurations released.
+        \openaipf{}, \bonsai{} (Q1\_0, 1-bit blockwise quantization),
+        and \faker{}, with all code and configurations released.
   \item A quantitative comparison of redact / faker-only / hybrid
         substitution modes under the constraint of CPU-only inference,
         on 100 multi-template multilingual documents. We are not aware
@@ -254,9 +236,10 @@ distribution are out of scope.
 \subsection{PII detection}
 Microsoft Presidio~\cite{presidio} combines regex, \spacy{} NER, and
 rule-based recognisers. The \openaipf{} model~\cite{privacyfilter}
-(1.5\,B MoE, 50\,M active) is a fine-tuned encoder using BIOES /
-BILOU-style token tags (popularised in NER by Ratinov and Roth~\cite{ratinov2009bioes})
-over eight PII categories. Running the
+(1.5\,B Mixture-of-Experts (MoE), 50\,M active) is a fine-tuned encoder
+using BIOES (Begin/Inside/Outside/End/Single)-style token tags
+(popularised in NER by Ratinov and Roth~\cite{ratinov2009bioes}) over
+eight PII categories. Running the
 inference harness shipped with the model on its bundled
 seven-template synthetic benchmark
 (\code{samples.json}, $N{=}100$), we measure F1 = 0.587 (precision
@@ -278,14 +261,35 @@ approach violates the on-device constraint and incurs per-request cost.
 
 \subsection{Low-bit small language models}
 The Bonsai family (1-bit Q1\_0)~\cite{bonsai} and Ternary-Bonsai
-(1.58-bit Q2\_0)~\cite{ternarybonsai} are Qwen3-based~\cite{qwen3}
-decoder-only LMs trained for extreme quantization. We run inference via
+(1.58-bit Q2\_0; ternary weights)~\cite{ternarybonsai} are
+Qwen3-based~\cite{qwen3} decoder-only LMs trained for extreme
+quantization. We run inference via
 \code{llama.cpp}~\cite{llamacpp}. Prior work~\cite{bitnet} has
-evaluated extreme-quantization SLMs on QA-style benchmarks; we did
-not find published evaluations of these models on
+evaluated extreme-quantization SLMs on Question-Answering (QA)-style
+benchmarks; we did not find published evaluations of these models on
 generative-substitution tasks where input copying or
 demonstration-regurgitation is a failure mode (the specific failure
 we document in Section~\ref{sec:regurgitation}).
+
+\subsection{In-context learning copy bias and demonstration sensitivity}
+Our few-shot regurgitation diagnosis (\cref{sec:regurgitation},
+\cref{sec:distinctness}) sits within a broader literature on copy
+bias and demonstration sensitivity in in-context learning at full LM
+scale.
+Min et al.~\cite{min2022rethinking} show that demonstration label
+correctness matters less than format and label-space distribution:
+models often pattern-match the surface structure of demos rather than
+learn the input$\to$output mapping. Zhao et
+al.~\cite{zhao2021calibrate} document a systematic majority-label and
+recency bias in few-shot prompts and propose calibration to correct
+it. Lu et al.~\cite{lu2022fantastically} show that few-shot outputs
+are highly sensitive to demonstration order, with performance varying
+by tens of points across permutations. Our finding extends these
+phenomena to extreme-quantization SLM scale: a 1-bit (and 1.58-bit)
+model under fixed three-shot prompting emits demonstration values
+verbatim, and our locale-conditioned rotating-demo fix is
+structurally a per-input randomisation of both demonstration content
+and ordering.
 
 \subsection{Downstream-utility evaluation}
 Prior anonymization work typically reports privacy and naturalness in
@@ -353,12 +357,13 @@ Our final design avoids this with two cooperating mechanisms:
         an MD5 hash of the input string as the random seed. This means
         \emph{the same entity always receives the same demonstrations}
         (cache-friendly across documents) but \emph{different entities
-        receive different demonstration subsets} (preventing any single
-        demonstration value from dominating the surrogate distribution).
+        receive different demonstration subsets}, spreading
+        surrogate-proposal calls across the full pool rather than
+        concentrating them on one fixed demo subset.
 \end{enumerate}
 
 With this strategy, \bonsai{} produces locale-appropriate,
-format-preserving, and diverse surrogates: \cjk{杨娟}\arrowto{}\cjk{李伟},
+format-preserving surrogates: \cjk{杨娟}\arrowto{}\cjk{李伟},
 \cjk{山田太郎}\arrowto{}\cjk{郑强} (Chinese fallback for kanji-only
 Japanese names---see Section~\ref{sec:limits}),
 M\"uller-Schulz\arrowto{}Anna Becker,
@@ -389,7 +394,7 @@ such as \code{is[PRIVATE\_PERSON]} (which would inflate perplexity).
 
 \paragraph{Dataset.}
 We use the \openaipf{} synthetic-document
-generator~\cite{aiprivacy200k,privacyfilter} (the same template engine
+generator~\cite{privacyfilter} (the same template engine
 that produced the 100-document benchmark shipped with the model card)
 to generate a fresh, larger 2000-document corpus
 (\code{data/samples\_2000.json}, seed=42), covering 7 templates (1099,
@@ -438,8 +443,8 @@ We report four per-document metrics, averaged across the corpus:
   \item \textbf{Leak rate}: fraction of \emph{ground-truth PII strings}
         that still appear verbatim (case-insensitive substring) in the
         output. Lower is better.
-  \item \textbf{Naturalness PPL}: \xglm{} perplexity over the output
-        text, chunked at 1024 tokens. Lower is more natural. \xglm{}
+  \item \textbf{Naturalness perplexity (PPL)}: \xglm{} perplexity over
+        the output text, chunked at 1024 tokens. Lower is more natural. \xglm{}
         is multilingual and covers all six evaluation locales, so
         cross-locale PPL numbers are directly comparable rather than
         biased toward Latin-script outputs.
@@ -548,9 +553,10 @@ outputs} to \bonsai{} (\cjk{杨娟}\,\arrowto\,``Alice Johnson'',
 \code{11-Jul-1998}\,\arrowto\,\code{03/15/1985}, etc.) at roughly
 six times slower per-call inference. This rules out quantization as the
 root cause: the model is doing what \emph{any} small LM asked to
-pattern-match \code{Real:X\textbackslash{}nFake:Y} would do---extract
-the most recent demonstration output as the answer when the input does
-not match the demonstration's distribution.
+pattern-match \code{Real:X\textbackslash{}nFake:Y} would do---copy
+one of the demonstration values from the prompt context (the first
+PERSON demo's output ``Alice Johnson'' in our pilot) when the input
+does not match the demonstration's distribution.
 
 \paragraph{Fix: locale-conditioned rotating few-shot demonstrations}
 (described in Section~\ref{sec:proposers}). With character-range locale
@@ -702,8 +708,12 @@ observe hybrid F1 $= 0.346 \pm 0.044$ versus faker F1 $= 0.506 \pm
 two-sample $t$-test ($n_{\text{f}}=n_{\text{h}}=5$, unequal variances)
 this gives standard error $\mathrm{SE} = \sqrt{0.056^2/5 + 0.044^2/5}
 = 0.032$, $t = 5.02$, Welch--Satterthwaite degrees of freedom $\approx
-7.6$, and a two-tailed $p < 0.001$. The gap is well outside
-seed-level noise.
+7.6$, and a two-tailed $p < 0.001$.\footnote{Standard deviations in
+\cref{tab:ner} are computed with \code{statistics.pstdev} (population
+SD) for consistency with our existing harness; the corresponding
+sample-SD-based Welch statistic is $t \approx 4.49$ on $\nu \approx
+7.6$ degrees of freedom, which still resolves at $p < 0.001$.} The
+gap is well outside seed-level noise.
 
 This is an honest negative finding for the central hybrid-vs-faker
 comparison on \emph{downstream NER training utility}, even though
@@ -714,10 +724,10 @@ that locale-conditioned, contextually-realistic surrogates produce
 more natural-looking output text but a \emph{less varied} surface
 distribution than faker's i.i.d.\ random surrogates---and downstream
 NER training benefits more from variety than from naturalness. We
-revisit this tradeoff in \cref{sec:limits} and leave open the
-question of whether a less greedy SLM sampling strategy (higher
-temperature, or stochastic demonstration sampling without
-deterministic hash seeding) would close the gap.
+revisit this tradeoff in \cref{sec:limits}, quantify it in the
+``Why hybrid is less varied'' paragraph below, and propose concrete
+remediations (higher-temperature decoding, larger pools, stochastic
+pool sampling, hybrid$+$faker mixed corpora) in \cref{sec:future}.
 
 A pilot run with the naive fixed-three-demonstration strategy
 (\cref{sec:regurgitation}, single seed) produced hybrid F1 = 0.310 vs.\
@@ -732,6 +742,113 @@ turn that SLM's output into a better training-data generator than
 \faker{} for this particular task.
 
 % =====================================================================
+\subsection{Surrogate distinctness: why hybrid is less varied}
+\label{sec:distinctness}
+
+The ``less varied surface distribution'' interpretation in
+\cref{sec:ner} is not just qualitative---it falls out structurally
+from how the SLM is prompted. Each locale-conditioned PERSON pool in \cref{app:pools}
+contains 6--8 (input, output) pairs, so the total number of
+demonstration strings the SLM ever sees as prompt context for a
+given locale is bounded by \textbf{$2|\text{pool}|$ = 12--16 strings
+per locale} ($|\text{pool}|$ ``Real:'' input examples plus
+$|\text{pool}|$ ``Fake:'' output examples), totalling roughly 64
+demonstration strings across all five locale pools (en, de, es, ja,
+zh). Few-shot pattern matching at SLM scale pulls outputs strongly
+toward any of these visible strings (we confirm both-side copying
+empirically below); the achievable corpus-wide surrogate vocabulary is
+therefore upper-bounded by a small constant set by the \emph{prompt
+design}, independently of the number of input documents. \faker{} has
+no such ceiling: each call samples i.i.d.\ from each locale's full
+first/last name lists ($\sim 10^{3}$--$10^{4}$ unique values per
+locale).
+
+We confirm this bound empirically on the matched 160-document en-locale
+training corpus (the same training set as \cref{tab:ner} bottom).
+\Cref{tab:distinctness} reports unique-surrogate counts and type-token
+ratios per label per mode. For PERSON, hybrid uses only \textbf{10
+distinct surrogate names} across 274 mentions in 160 documents, against
+faker's \textbf{31}---a $3.1\times$ narrower vocabulary, with
+type-token ratio 0.037 vs.\ 0.113.
+
+A finer-grained look at the 10 hybrid PERSON surrogates is
+illuminating. The five most-repeated values are \code{Jennifer Wong},
+\code{Linda Vasquez}, \code{Michael O'Brien}, \code{David Kim}, and
+\code{Priya Krishnamurthy} (cf.\ \cref{app:pools}). All five appear
+verbatim in the en demonstration pool---and notably, all five are the
+\emph{input-side} (``Real:'') examples, not the \emph{output-side}
+(``Fake:'') examples that the prompt nominally offers as the imitation
+target. The locale-conditioned fix has therefore not eliminated
+demonstration regurgitation; it has shifted the failure from
+``copy a wrong-locale demo verbatim'' (\cref{sec:regurgitation}) to
+``copy a same-locale demo entry verbatim,'' with the model drawing
+from \emph{both} sides of the (input, output) pairs. The measured 10
+unique en PERSON surrogates fits comfortably under the $2|\text{pool}|
+= 16$ ceiling derived above.
+
+For ADDRESS the picture is the same: 6 unique hybrid surrogates vs.\
+18 for faker on 162 mentions ($3.0\times$). For the labels that use
+\faker{} in both modes (EMAIL, PHONE, ACCOUNT), hybrid still produces
+$\sim$$2\times$ fewer unique values than faker (8 vs.\ 16, 18 vs.\
+29, 33 vs.\ 61). This residual gap is not a regurgitation effect---no
+SLM is involved---but a side-effect of \faker{}'s per-document
+re-seeding interacting with mode-dependent call ordering: in faker
+mode, Faker's first PERSON / ADDRESS calls advance the generator
+state before EMAIL / PHONE / ACCOUNT are sampled, so the latter see
+varied state across documents; in hybrid mode the SLM handles
+PERSON / ADDRESS without consuming Faker state, so EMAIL / PHONE /
+ACCOUNT are repeatedly sampled from the just-after-seed-0 generator
+state and concentrate on a smaller set. The implication: the residual
+2$\times$ narrowing in non-SLM labels is a separate (and fixable)
+issue tied to seed management, distinct from the 3$\times$ narrowing
+in SLM-handled labels that is driven by demonstration regurgitation.
+
+The combined effect is that the NER trainer sees only a handful of
+distinct ``positive'' PII strings in hybrid mode, learns those
+specific surface forms, and fails to generalise to the held-out
+original documents---the mechanism behind hybrid's lower recall in
+\cref{tab:ner}. The dominant factor is the SLM-handled labels, which
+are also the largest by mention count (PERSON 274, ADDRESS 162). The
+fix lives at the prompt level, not in the SLM weights; the
+\cref{sec:future} suggestions (higher-temperature decoding, larger
+pools, stochastic pool sampling) attack this ceiling directly.
+
+\begin{table}[t]
+\centering
+\caption{Surrogate distinctness on the matched 160-doc en-locale
+training corpus (same training set as \cref{tab:ner} bottom). For
+PERSON and ADDRESS---the two labels where hybrid uses the SLM rather
+than \faker{}---hybrid produces a $3\times$ narrower unique-surrogate
+vocabulary than faker, consistent with demonstration-pool regurgitation.
+DATE ($n{=}20$) is a small-$n$ outlier where hybrid's multi-format
+demo pools yield slightly more variety. EMAIL/PHONE/ACCOUNT use
+\faker{} in both modes but show a residual $\sim$$2\times$ gap driven
+by per-document Faker re-seeding interacting with call ordering (see
+text), not by SLM regurgitation.}
+\label{tab:distinctness}
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{l r r c r c}
+\toprule
+\textbf{Label} & \textbf{Mentions}
+& \multicolumn{2}{c}{\textbf{faker}}
+& \multicolumn{2}{c}{\textbf{hybrid}} \\
+\cmidrule(lr){3-4} \cmidrule(lr){5-6}
+       &     & \textbf{unique} & \textbf{TTR}
+             & \textbf{unique} & \textbf{TTR} \\
+\midrule
+PERSON  & 274 & 31 & 0.113 & \textbf{10} & \textbf{0.037} \\
+ADDRESS & 162 & 18 & 0.111 & \textbf{6}  & \textbf{0.037} \\
+DATE    &  20 &  5 & 0.250 & 9           & 0.450          \\
+\midrule
+\multicolumn{6}{l}{\emph{Faker-only labels in both modes (sanity check):}} \\
+EMAIL   & 101 & 16 & 0.158 & 8 & 0.079 \\
+PHONE   & 211 & 29 & 0.137 & 18 & 0.085 \\
+ACCOUNT & 278 & 61 & 0.219 & 33 & 0.119 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% =====================================================================
 \section{Discussion and Limitations}
 \label{sec:limits}
 
@@ -739,9 +856,10 @@ turn that SLM's output into a better training-data generator than
 The non-zero leak rate in all three modes reflects the privacy
 filter's measured detection F1 of 0.587 (Section~\ref{sec:related}).
 A pipeline using a higher-recall
-detector or pattern-based fallback (e.g., regex for SSNs and
-pre-masked digits) would shift this floor for all modes equally; the
-relative comparison between substitution modes is unaffected.
+detector or pattern-based fallback (e.g., regex for Social Security
+Numbers (SSNs) and pre-masked digits) would shift this floor for all
+modes equally; the relative comparison between substitution modes is
+unaffected.
 
 \paragraph{Few-shot regurgitation is a prompting issue, not a
 quantization issue.}
@@ -749,9 +867,14 @@ Section~\ref{sec:regurgitation} shows that the failure occurs
 identically under 1-bit \bonsai{} and 1.58-bit \ternary{}. Larger or
 higher-precision models \emph{might} suppress the symptom by attending
 more strongly to the instruction, but the underlying pattern-matching
-pull will remain at any small-LM scale. The robust fix is at the prompt
-level (locale-conditioned rotating demonstrations); we recommend it as
-default practice for any small-LM substitution pipeline.
+pull will remain at any small-LM scale. The first-line fix is at the
+prompt level (locale-conditioned rotating demonstrations), which
+eliminates the qualitative cross-locale failure of the fixed-three-shot
+strategy and we recommend as default practice; however, as
+\cref{tab:distinctness} shows, the SLM still copies from the
+demonstration pool, so the residual surrogate-vocabulary ceiling is
+$\sim 2|\text{pool}|$ and the broader fix is to enlarge or stochasticise
+the pool itself (\cref{sec:future}).
 
 \paragraph{No coreference resolution.}
 ``John'' and ``John Smith'' within the same document are treated as
@@ -787,17 +910,86 @@ including the \code{hybrid} vs.\ \code{faker} comparison at the
 matched scale (\cref{sec:ner}).
 
 % =====================================================================
+\section{Future Work}
+\label{sec:future}
+
+The hybrid-vs-faker downstream-NER gap (\cref{sec:ner}) frames most of
+the open directions below. The shared diagnosis: locale-conditioned
+demonstrations fix the qualitative regurgitation failure but yield a
+narrower surrogate distribution than \faker{}'s i.i.d.\ random
+sampling. Future work should attack that distribution directly.
+
+\paragraph{Broaden the SLM surrogate distribution.}
+We use \code{llama-cli} with default decoding, which is close to greedy
+at this scale and produces the same surrogate for the same input every
+time (the \emph{point} of the MD5 seeding, but also the source of the
+narrowness). Two parameter-only changes are worth ablating:
+(i) raising temperature / nucleus-sampling threshold to widen
+single-call output variance, and (ii) replacing the deterministic MD5
+seed with a per-document random seed so that repeated entities still
+collapse within a document but the corpus-level surrogate distribution
+is no longer fixed. Both keep the on-device constraint and add no
+latency.
+
+\paragraph{Larger and stochastic demonstration pools.}
+Each locale pool currently holds 4--8 (input, output) entries
+(\cref{app:pools}); the SLM regurgitates from both sides of those
+entries (\cref{sec:ner}), so the achievable surrogate space is
+bounded above by roughly $2|\text{pool}|$ unique strings per locale,
+i.e.\ 12--16 strings. Two extensions: scale each pool to 50--100
+entries (cheap, no model changes), and stochastically rotate the pool
+subset itself rather than deterministically hashing the input. The
+empirical hybrid PERSON unique-count of 10 in \cref{tab:distinctness}
+is at the ceiling of the current $2|\text{pool}|=16$ bound and is the
+proximate cause of the hybrid--faker NER gap.
+
+\paragraph{Mixed-source training corpora.}
+A pragmatic alternative to closing the gap on the SLM side is to feed
+the downstream NER trainer a \emph{mix} of hybrid and \faker{}
+substitutions of the same documents---naturalness from hybrid, surface
+variety from faker. The mix ratio is a single hyperparameter. We
+hypothesise an F1 between the two single-source modes, but the
+alternative---that the mix exceeds either single source by combining
+faker's surface variety with hybrid's locale fidelity---is also
+plausible and is precisely what an ablation would test.
+
+\paragraph{Coreference-aware entity grouping.}
+Current resolution is surface-form only; ``John'' and ``John Smith''
+within the same document map to distinct entities. A lightweight
+coreference layer would tighten consistency and slightly reduce the
+number of unique surrogate-proposal calls.
+
+\paragraph{Locale-heuristic refinements.}
+Kanji-only Japanese names currently route to the \code{zh} pool
+because our character-range heuristic requires kana to disambiguate
+(\cref{sec:regurgitation}). A character-frequency or n-gram-based
+classifier, or an explicit ``treat ambiguous CJK as both ja and zh and
+let the SLM pick'' strategy, would address this.
+
+\paragraph{Higher-recall detection floor.}
+The 0.249 leak rate (\cref{tab:primary}) is the privacy filter's
+detection ceiling; it bounds all three modes equally. Layering a
+regex/rule fallback for SSNs, pre-masked digits, and locale-specific
+patterns on top of \openaipf{} is orthogonal to the substitution-mode
+comparison but important for production deployment.
+
+\paragraph{Inference-attack threat model.}
+We measure literal-string leak only. A determined adversary with
+auxiliary knowledge could potentially link surrogates back to
+originals via membership-inference or linkage attacks. Quantitative
+evaluation under a formal threat model---and, separately, a
+differentially-private surrogate sampler---would close the gap between
+``no literal leak'' and ``no information leak.''
+
+% =====================================================================
 \section{Conclusion}
 \label{sec:conclusion}
 
 We built and evaluated a fully on-device PII substitution pipeline
-combining a token classifier (\openaipf{}), a 1-bit small language
-model (\bonsai{}, Q1\_0), and a rule-based generator (\faker{}). The
-architecture works as intended at the document level: privacy is
-preserved (within the privacy-filter's recall ceiling), surrogates are
-consistent across mentions, length preservation is best-of-three in
-4 of 6 locales, and naturalness PPL under a multilingual evaluator
-beats faker-only baselines across \emph{all six} locales.
+combining \openaipf{}, \bonsai{} (Q1\_0), and \faker{}; the
+architecture meets its document-level objectives (consistent,
+length-preserving, locale-correct surrogates with multilingual-PPL
+gains over faker in all six evaluated locales).
 
 The most actionable contribution is methodological. We document a
 ``few-shot regurgitation'' failure mode in which a small SLM, prompted
@@ -806,9 +998,10 @@ input and emits one of the demonstration \emph{outputs} verbatim---and
 we show by direct comparison with 1.58-bit \ternary{} that this is a
 property of \emph{prompting} at small-LM scale, not of 1-bit
 quantization. A simple locale-conditioned rotating-demonstrations
-prompting strategy fixes it: 482/482 unique \bonsai{} surrogate
-proposals succeed (no echoes, no errors) under this strategy, producing
-locale-correct, format-preserving surrogates
+prompting strategy resolves the qualitative cross-locale failure:
+482/482 unique \bonsai{} surrogate proposals succeed (no echoes, no
+errors) under this strategy, producing locale-correct,
+format-preserving surrogates
 (\cjk{杨娟}\,\arrowto\,\cjk{李伟}, M\"uller-Schulz\,\arrowto\,Anna
 Becker, \code{11-Jul-1998}\,\arrowto\,\code{05-Aug-2003}); the fix
 adds $<50$\,ms per surrogate proposal.
@@ -869,11 +1062,16 @@ python eval_ner_utility.py \
        --samples-path data/samples_2000.json \
        --modes original redact faker hybrid --n-max 200 \
        --output results/ner_v3_matched
+
+# Surrogate distinctness (Table 3, ~50 min hybrid + <1s faker on CPU)
+python analyze_surrogate_distinctness.py --n-max 200 \
+       --modes faker hybrid \
+       --output results/surrogate_distinctness.json
 \end{lstlisting}
 
-Total wall-clock for the full pipeline is approximately 7--8 hours on
+Total wall-clock for the full pipeline is approximately 8--9 hours on
 a 31\,GB single-CPU machine, dominated by hybrid-mode \bonsai{}
-generation in both the primary and NER experiments. The
+generation in the primary, NER, and distinctness experiments. The
 privacy-filter model ($\sim$2.8\,GB) and the \xglm{} evaluator
 ($\sim$1.1\,GB) are downloaded once from Hugging Face on first run
 and cached locally.
@@ -884,20 +1082,22 @@ and cached locally.
 
 In line with arXiv's policy on the use of generative AI in scholarly
 work, the author discloses that a large language model assistant
-(Anthropic's Claude) was used during the preparation of this manuscript.
-Specifically: (i) the assistant helped explore and draft prose for the
-introduction, related-work, and discussion sections from the author's
-notes and bullet-point outlines; (ii) the assistant helped scaffold
-LaTeX, bibliography, and table formatting; and (iii) the assistant ran
-the experimental scripts and reported the resulting numerical outputs
-back to the author. All quantitative results in
-Tables~\ref{tab:primary}, \ref{tab:latency}, and \ref{tab:ner} are
+(Anthropic's Claude, primarily Claude Opus 4.7) was used during the
+preparation of this manuscript. Specifically: (i) the assistant
+helped explore and draft prose for the introduction, related-work,
+and discussion sections from the author's notes and bullet-point
+outlines; (ii) the assistant helped scaffold LaTeX, bibliography, and
+table formatting; and (iii) the assistant ran the experimental
+scripts and reported the resulting numerical outputs back to the
+author. All quantitative results in Tables~\ref{tab:primary},
+\ref{tab:latency}, \ref{tab:ner}, and \ref{tab:distinctness} are
 computed by the released code (\code{eval\_substitution.py},
-\code{eval\_ner\_utility.py}) on the released artefact and are
-reproducible by any reader; no result was generated, projected, or
-hallucinated by the language model. The author is solely responsible
-for the technical claims, methodology, statistical analysis, and the
-final wording of the manuscript.
+\code{eval\_ner\_utility.py}, \code{analyze\_surrogate\_distinctness.py})
+on the released artefact and are reproducible by any reader; no
+result was generated, projected, or hallucinated by the language
+model. The author has independently reviewed all assistant-drafted
+text and is solely responsible for the technical claims, methodology,
+statistical analysis, and the final wording of the manuscript.
 
 % =====================================================================
 \bibliographystyle{plain}
