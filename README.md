@@ -4,7 +4,7 @@ Reproducible pipeline and evaluation harness for the paper:
 
 > **Locale-Conditioned Few-Shot Prompting Prevents Demonstration
 > Regurgitation in On-Device PII Substitution with Small Language Models.**
-> Anuj Sadani, Infrrd.ai, 2026.
+> Anuj Sadani and Deepak Kumar, Infrrd.ai, 2026.
 > [`paper/main.pdf`](paper/main.pdf)
 
 A fully on-device PII substitution stack combining:
@@ -153,16 +153,16 @@ The eval scripts load `data/samples_2000.json` by default; pass
 
 ```bibtex
 @misc{sadani2026pii,
-  author       = {Sadani, Anuj},
+  author       = {Sadani, Anuj and Kumar, Deepak},
   title        = {Locale-Conditioned Few-Shot Prompting Prevents
                   Demonstration Regurgitation in On-Device {PII}
                   Substitution with Small Language Models},
   year         = {2026},
   howpublished = {Manuscript},
-  note         = {Affiliation: Infrrd.ai. Contact: anujsadani@infrrd.ai}
+  note         = {Affiliation: Infrrd.ai. Contact: anujsadani@infrrd.ai, deepakumar@infrrd.ai}
 }
 ```
 
 ## License
 
-[MIT](LICENSE) — © 2026 Anuj Sadani.
+[MIT](LICENSE) — © 2026 Anuj Sadani and Deepak Kumar.
